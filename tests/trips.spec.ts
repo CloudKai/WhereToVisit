@@ -315,7 +315,10 @@ test("anonymous discovery continues through real account creation and visible du
     page.getByRole("region", { name: "Saved shortlist" }),
   ).not.toContainText("East branch");
   await page.unroute("**/api/trips/*");
-  await page.getByRole("button", { name: "Retry" }).click();
+  await page
+    .getByRole("alert", { name: "Trip request failed" })
+    .getByRole("button", { name: "Retry", exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: "Saved shortlist" }),
   ).toContainText("East branch");
@@ -423,7 +426,10 @@ test("a real storage write failure leaves the private Trip unchanged and offers 
         .title,
     ).toBe("Before storage failure");
     lock.exec("ROLLBACK");
-    await page.getByRole("button", { name: "Retry" }).click();
+    await page
+      .getByRole("alert", { name: "Trip request failed" })
+      .getByRole("button", { name: "Retry", exact: true })
+      .click();
     await expect(
       page.getByRole("heading", { name: "Recovered after retry" }),
     ).toBeVisible();
