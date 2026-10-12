@@ -105,10 +105,14 @@ export type CatalogueQuery = {
     system: Coordinates["system"];
   };
   category?: Place["category"];
-  budget?: { maximum: number; currency: string };
+  budget?: "low" | "mid" | "high" | "unknown";
   neighbourhood?: string;
-  distance?: { origin: Coordinates; radiusMetres: number };
-  recommendationType?: RecommendationType;
+  distance?: {
+    origin: Pick<Coordinates, "latitude" | "longitude" | "system">;
+    radiusMetres: number;
+  };
+  unknownDistance?: boolean;
+  recommendationType?: RecommendationType | "unclassified";
 };
 export type CatalogueResult = {
   places: Place[];

@@ -41,6 +41,12 @@ test("visitor sees the bounded source-backed shortlist on phone and desktop", as
     await expect(page.getByRole("status")).toContainText(
       "Six source-backed Shanghai food and café branches",
     );
+    const first = page.getByRole("article").first();
+    await first.getByText("Sources and place details", { exact: true }).click();
+    await expect(
+      first.getByRole("link", { name: "Search address on Apple Maps" }),
+    ).toHaveAttribute("href", /https:\/\/maps\.apple\.com\/.*q=/);
+    await expect(first).toContainText("Hours unknown");
     await page.screenshot({
       path: testInfo.outputPath(`discover-${width}.png`),
       fullPage: true,
@@ -50,6 +56,7 @@ test("visitor sees the bounded source-backed shortlist on phone and desktop", as
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
+    await page.reload();
     await page.keyboard.press("Tab");
     await expect(
       page.getByRole("link", { name: "Skip to content" }),
@@ -100,4 +107,17 @@ test("public catalogue exposes six real branches without substituting developmen
     /fictional-cafe|organiserUserId|savedPlaces/,
   );
   expect((await request.get("/development")).status()).toBe(404);
+  const unknown = await request.get(
+    "/api/catalogue?budget=unknown&recommendationType=unclassified&distance=unknown",
+  );
+  expect((await unknown.json()).data.places).toHaveLength(6);
+  for (const query of [
+    "budget=low",
+    "recommendationType=trending",
+    "latitude=31.23&longitude=121.47&system=WGS-84&radiusMetres=1000",
+  ]) {
+    expect(
+      (await (await request.get(`/api/catalogue?${query}`)).json()).data.places,
+    ).toEqual([]);
+  }
 });

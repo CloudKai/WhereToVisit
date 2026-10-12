@@ -10,7 +10,7 @@ writeFileSync(
 );
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "catalogue.spec.ts",
+  testMatch: ["catalogue.spec.ts", "discovery.spec.ts"],
   workers: 1,
   fullyParallel: false,
   use: {

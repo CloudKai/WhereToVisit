@@ -31,6 +31,9 @@ test("anonymous visitor sees distinct branches and dated sourced recommendations
     ).toBeVisible();
     const firstBranch = page.getByRole("article").first();
     await expect(firstBranch).toContainText("East branch");
+    await firstBranch
+      .getByText("Sources and place details", { exact: true })
+      .click();
     await expect(firstBranch).toContainText(
       "A second fictional recommendation",
     );
@@ -104,7 +107,7 @@ test("invalid source batches cannot replace the last valid public catalogue", as
     }
   }
   expect((await request.get("/api/catalogue?category=cafe")).status()).toBe(
-    400,
+    200,
   );
   expect(
     await (await request.get("/api/catalogue?city=London")).json(),
@@ -156,6 +159,9 @@ test("evidenced optional facts and classifications show their sources while unsu
     writeFileSync(path, JSON.stringify(supported));
     await page.goto("/discover");
     const branch = page.getByRole("article").first();
+    await branch
+      .getByText("Sources and place details", { exact: true })
+      .click();
     await expect(branch).toContainText("CNY 25");
     await expect(branch).toContainText("Fictional hours 10:00–18:00");
     await expect(branch).toContainText("Fictional ratings: 4/5");

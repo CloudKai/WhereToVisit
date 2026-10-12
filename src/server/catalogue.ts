@@ -5,6 +5,7 @@ import type {
   CatalogueResult,
   OperationResult,
 } from "@/shared/contracts";
+import { matchesDiscoveryQuery } from "@/shared/discovery-query";
 import {
   loadCatalogueFile,
   readCataloguePublication,
@@ -14,11 +15,11 @@ export interface CatalogueProvider {
 }
 const catalogue: CatalogueProvider = {
   async query(input) {
-    if (Object.keys(input).some((key) => key !== "city"))
+    if (input.area)
       return {
         status: "unavailable",
         reason: "query-not-supported",
-        message: "Catalogue filters and map queries are not available yet.",
+        message: "Map-area queries are not available yet.",
       };
     if (input.city !== "Shanghai")
       return {
@@ -65,7 +66,9 @@ const catalogue: CatalogueProvider = {
       return {
         status: "available",
         data: {
-          places: batch.places,
+          places: batch.places.filter((place) =>
+            matchesDiscoveryQuery(place, input),
+          ),
           coverageMessage: batch.coverageMessage,
           dataKind: batch.kind,
         },
