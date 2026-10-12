@@ -14,6 +14,15 @@ import { CatalogueList } from "./catalogue-list";
 import { OperationState } from "./operation-state";
 
 type Result = OperationResult<CatalogueResult>;
+function catalogueNeighbourhoods(places: CatalogueResult["places"]) {
+  return [
+    ...new Set(
+      places
+        .map((place) => place.neighbourhood)
+        .filter((item): item is string => item !== null),
+    ),
+  ];
+}
 export function Discovery({ initialResult }: { initialResult: Result }) {
   const [result, setResult] = useState(initialResult);
   const [loading, setLoading] = useState(false);
@@ -23,13 +32,7 @@ export function Discovery({ initialResult }: { initialResult: Result }) {
   const requestVersion = useRef(0);
   const [neighbourhoods, setNeighbourhoods] = useState(() =>
     initialResult.status === "available"
-      ? [
-          ...new Set(
-            initialResult.data.places
-              .map((place) => place.neighbourhood)
-              .filter((item): item is string => item !== null),
-          ),
-        ]
+      ? catalogueNeighbourhoods(initialResult.data.places)
       : [],
   );
   async function load(query: CatalogueQuery) {
@@ -50,9 +53,7 @@ export function Discovery({ initialResult }: { initialResult: Result }) {
         setNeighbourhoods((previous) => [
           ...new Set([
             ...previous,
-            ...next.data.places
-              .map((place) => place.neighbourhood)
-              .filter((item): item is string => item !== null),
+            ...catalogueNeighbourhoods(next.data.places),
           ]),
         ]);
     } catch {
