@@ -8,6 +8,14 @@ writeFileSync(
   ".data/catalogue-scenario.json",
   JSON.stringify(catalogueFixture()),
 );
+const testDatabasePath =
+  process.env.WHERETOVISIT_TEST_DATABASE ??
+  `./.data/test-catalogue-${randomBytes(8).toString("hex")}.sqlite`;
+process.env.WHERETOVISIT_TEST_DATABASE = testDatabasePath;
+writeFileSync(
+  ".data/trip-storage-test.json",
+  JSON.stringify({ databasePath: testDatabasePath }),
+);
 export default defineConfig({
   testDir: "./tests",
   testMatch: [
@@ -16,6 +24,7 @@ export default defineConfig({
     "map-area.spec.ts",
     "import.spec.ts",
     "resolution.spec.ts",
+    "trips.spec.ts",
   ],
   workers: 1,
   fullyParallel: false,
@@ -31,9 +40,10 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         ENABLE_DEVELOPMENT_MAP_FIXTURE: "1",
+        ENABLE_DEVELOPMENT_TRIP_FIXTURE: "1",
         ENABLE_DEVELOPMENT_IMPORT_FIXTURE: "1",
         IMPORTS_ENABLED: "1",
-        DATABASE_PATH: `./.data/test-catalogue-${randomBytes(8).toString("hex")}.sqlite`,
+        DATABASE_PATH: testDatabasePath,
         CATALOGUE_DEVELOPMENT_SOURCE: "./.data/catalogue-scenario.json",
         BETTER_AUTH_URL: "http://127.0.0.1:8180",
         BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { CatalogueResult } from "@/shared/contracts";
 
@@ -56,6 +57,12 @@ export function CatalogueList({
             data-selected={selectedId === place.id}
           >
             <h2>{place.displayName}</h2>
+            <Link
+              className="text-link"
+              href={`/trips?placeId=${encodeURIComponent(place.id)}`}
+            >
+              Save {place.branch ?? place.displayName} to a Trip
+            </Link>
             {onSelect && (
               <button
                 className="secondary-button"

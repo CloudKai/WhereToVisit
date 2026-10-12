@@ -14,7 +14,7 @@ test("visitor can navigate discovery, import and trips", async ({
     for (const [name, path, heading] of [
       ["Discover", "/discover", "Discover Shanghai"],
       ["Import", "/import", "Bring your inspiration"],
-      ["Trips", "/trips", "Your next trip"],
+      ["Trips", "/trips", "Your Trips"],
     ]) {
       const link = navigation.getByRole("link", { name, exact: true });
       await expect(link).toBeVisible();

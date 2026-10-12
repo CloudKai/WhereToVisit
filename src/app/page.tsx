@@ -41,11 +41,11 @@ export default function Home() {
           <span className="card-link">Explore imports ↗</span>
         </Link>
         <Link className="entry-card" href="/trips">
-          <span className="step">03 / PLAN TOGETHER</span>
+          <span className="step">03 / SAVE YOUR PLACES</span>
           <h2>Make it your day.</h2>
           <p>
-            Choose places with friends or family, then shape a day around your
-            favourites.
+            Keep a private Shanghai shortlist with the sources that inspired
+            you. Choose which saved places to consider for a future day plan.
           </p>
           <span className="card-link">Explore trips ↗</span>
         </Link>

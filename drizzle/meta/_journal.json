@@ -22,6 +22,13 @@
       "when": 1791798358383,
       "tag": "0002_import_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791804853700,
+      "tag": "0003_private_trips",
+      "breakpoints": true
     }
   ]
 }

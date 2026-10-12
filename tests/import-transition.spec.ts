@@ -36,6 +36,7 @@ test("stored fictional imports cannot be read or mutated after development stora
     WIKIMEDIA_OPERATOR_CONTACT: "",
     IMPORTS_ENABLED: "1",
     ENABLE_DEVELOPMENT_IMPORT_FIXTURE: "1",
+    ENABLE_DEVELOPMENT_TRIP_FIXTURE: "1",
   };
   execFileSync("npm", ["run", "db:migrate"], { env, stdio: "pipe" });
   let next: ChildProcess | null = null,
@@ -109,6 +110,45 @@ test("stored fictional imports cannot be read or mutated after development stora
       ).job;
       originals.push({ id: job.id, sourceUrl, before });
     }
+    const headers = { Origin: origin };
+    expect(
+      (
+        await request.post("/api/auth/sign-up/email", {
+          headers,
+          data: {
+            name: "Transition organiser",
+            email: `transition-${randomBytes(8).toString("hex")}@example.invalid`,
+            password: "Transition-password-123",
+          },
+        })
+      ).status(),
+    ).toBe(200);
+    const pending = (
+      await (
+        await request.post("/api/trip-save-intents", {
+          headers,
+          data: { placeId: "fictional-cafe-east", importId: originals[0].id },
+        })
+      ).json()
+    ).intent;
+    const trip = (
+      await (
+        await request.post("/api/trips", {
+          headers,
+          data: { title: "Fixture Trip", city: "Shanghai" },
+        })
+      ).json()
+    ).trip;
+    const savedTrip = (
+      await (
+        await request.post(`/api/trips/${trip.id}`, {
+          headers,
+          data: { action: "save", intentId: pending.id },
+        })
+      ).json()
+    ).trip;
+    expect(savedTrip.dataKind).toBe("fixture");
+    expect(savedTrip.savedPlaces[0].importedEvidence).toHaveLength(1);
     await stop(next);
     next = null;
     next = launch(["run", "start", "--", "--port", "3100"], {
@@ -129,6 +169,30 @@ test("stored fictional imports cannot be read or mutated after development stora
         { timeout: 30_000 },
       )
       .toBe(200);
+    expect((await request.get(`/api/trips/${trip.id}`)).status()).toBe(404);
+    expect((await (await request.get("/api/trips")).json()).trips).toEqual([]);
+    expect(
+      (await request.get(`/api/trip-save-intents/${pending.id}`)).status(),
+    ).toBe(404);
+    for (const data of [
+      { action: "save", intentId: pending.id },
+      { action: "remove", placeId: "fictional-cafe-east" },
+      { action: "select", placeId: "fictional-cafe-east", selected: true },
+      { action: "update", title: "Changed", city: "Shanghai" },
+    ])
+      expect(
+        (
+          await request.post(`/api/trips/${trip.id}`, { headers, data })
+        ).status(),
+      ).toBe(404);
+    expect(
+      (
+        await request.post("/api/trip-save-intents", {
+          headers,
+          data: { placeId: "fictional-cafe-east", importId: originals[0].id },
+        })
+      ).status(),
+    ).toBe(404);
     expect((await (await request.get("/api/imports")).json()).jobs).toEqual([]);
     expect(
       (await (await request.get("/api/imports")).json()).resolvedPlaces,
@@ -200,6 +264,13 @@ test("stored fictional imports cannot be read or mutated after development stora
         { timeout: 30_000 },
       )
       .toBe(200);
+    expect(
+      (await (await request.get(`/api/trips/${trip.id}`)).json()).trip,
+    ).toEqual(savedTrip);
+    expect(
+      (await (await request.get(`/api/trip-save-intents/${pending.id}`)).json())
+        .intent,
+    ).toEqual(pending);
     for (const original of originals) {
       const restored = (
         await (await request.get(`/api/imports/${original.id}`)).json()

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Import, ResolvedImportPlace } from "@/shared/contracts";
 
@@ -84,8 +85,9 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
         Temporary drafts belong to this browser session and expire within 30
         days. Source text is deleted immediately after extraction. These names
         can be compared with the bounded sourced shortlist. Every branch choice
-        requires your confirmation. Live provider lookup, exact map pins,
-        accounts and Trip saving remain unavailable.
+        requires your confirmation. Sign in and review a confirmed Shanghai
+        branch to save it to a private Trip. Live provider lookup and exact map
+        pins remain unavailable.
       </p>
       {fixtureMode && (
         <p className="map-fixture-label">
@@ -129,8 +131,8 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
           <h2>Confirmed temporary branches</h2>
           <p>
             Selections from your retained drafts, combined by branch identity.
-            These are your choices; exact map pins and durable Trip saving
-            remain unavailable.
+            These are your choices; exact map pins remain unavailable. Sign in
+            and review explicitly to save a Shanghai branch to a private Trip.
           </p>
           {resolvedPlaces.map((resolved) => (
             <div key={`${resolved.dataKind}:${resolved.place.id}`}>
@@ -144,6 +146,12 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                   : ""}
                 .
               </p>
+              <Link
+                className="text-link"
+                href={`/trips?placeId=${encodeURIComponent(resolved.place.id)}&importId=${encodeURIComponent(resolved.importedEvidence[0].importId)}`}
+              >
+                Save confirmed branch to a Trip
+              </Link>
               <p>
                 {resolved.importedEvidence.length} source mentions ·{" "}
                 {resolved.dataKind === "fixture"

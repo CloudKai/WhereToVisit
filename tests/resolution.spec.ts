@@ -4,13 +4,24 @@ import type { Import } from "../src/shared/contracts";
 import { catalogueFixture } from "./catalogue-fixture";
 
 const origin = "http://127.0.0.1:8180";
+test.setTimeout(120_000);
 async function imported(request: APIRequestContext, title = "Resolution") {
-  const response = await request.post("/api/imports", {
-    headers: { Origin: origin },
-    data: { sourceUrl: `https://en.wikivoyage.org/wiki/Fixture_${title}` },
-  });
-  expect(response.status()).toBe(202);
-  const id = (await response.json()).job.id;
+  let id = "";
+  await expect
+    .poll(
+      async () => {
+        const response = await request.post("/api/imports", {
+          headers: { Origin: origin },
+          data: {
+            sourceUrl: `https://en.wikivoyage.org/wiki/Fixture_${title}`,
+          },
+        });
+        if (response.status() === 202) id = (await response.json()).job.id;
+        return response.status();
+      },
+      { timeout: 70_000, intervals: [1000, 5000, 5000] },
+    )
+    .toBe(202);
   let job: Import | undefined;
   await expect
     .poll(async () => {

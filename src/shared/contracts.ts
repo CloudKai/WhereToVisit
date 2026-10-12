@@ -200,7 +200,16 @@ export type Trip = {
   organiserUserId: string;
   title: string;
   city: string;
-  savedPlaces: { placeId: string; evidenceIds: string[] }[];
+  dataKind: "real" | "fixture";
+  savedPlaces: {
+    placeId: string;
+    evidenceIds: string[];
+    place: Place;
+    importedEvidence: ResolvedImportPlace["importedEvidence"];
+  }[];
+  selectedPlaceIds: string[];
+  createdAt: string;
+  updatedAt: string;
   dayPlanIds: string[];
 };
 export type DayPlanRequest = {
@@ -272,4 +281,14 @@ export type ResolvedImportPlace = {
     extraction: Mention["extraction"];
     confirmation: NonNullable<Mention["confirmation"]>;
   }[];
+};
+
+/** Explicit save continuation, bound to its initiating browser and first authenticated organiser. */
+export type TripSaveIntent = {
+  id: string;
+  organiserUserId: string | null;
+  expiresAt: string;
+  dataKind: "real" | "fixture";
+  place: Place;
+  importedEvidence: ResolvedImportPlace["importedEvidence"];
 };

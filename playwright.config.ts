@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "shell.spec.ts",
+  testMatch: ["shell.spec.ts", "trips-production.spec.ts"],
   fullyParallel: false,
   workers: 1,
   use: {
@@ -20,6 +20,7 @@ export default defineConfig({
         ENABLE_DEVELOPMENT_FIXTURES: "1",
         ENABLE_DEVELOPMENT_MAP_FIXTURE: "1",
         ENABLE_DEVELOPMENT_IMPORT_FIXTURE: "1",
+        ENABLE_DEVELOPMENT_TRIP_FIXTURE: "1",
         IMPORTS_ENABLED: "1",
         WIKIMEDIA_OPERATOR_CONTACT: "",
         CATALOGUE_DEVELOPMENT_SOURCE: "./.data/catalogue-scenario.json",
