@@ -10,7 +10,13 @@ export default async function Discover() {
       <p className="lead">
         Food and cafés, with the story behind each recommendation.
       </p>
-      <Discovery initialResult={result} />
+      <Discovery
+        initialResult={result}
+        mapFixtureEnabled={
+          process.env.NODE_ENV === "development" &&
+          process.env.ENABLE_DEVELOPMENT_MAP_FIXTURE === "1"
+        }
+      />
     </section>
   );
 }

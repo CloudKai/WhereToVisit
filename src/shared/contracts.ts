@@ -95,15 +95,16 @@ export type RecommendationType =
   | "trending"
   | "local-favourite"
   | "highly-reviewed";
+export type MapArea = {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+  system: "WGS-84" | "GCJ-02";
+};
 export type CatalogueQuery = {
   city: string;
-  area?: {
-    north: number;
-    south: number;
-    east: number;
-    west: number;
-    system: Coordinates["system"];
-  };
+  area?: MapArea;
   category?: Place["category"];
   budget?: "low" | "mid" | "high" | "unknown";
   neighbourhood?: string;
@@ -118,6 +119,12 @@ export type CatalogueResult = {
   places: Place[];
   coverageMessage: string;
   dataKind: "real" | "fixture";
+  areaSearch?: {
+    requestedArea: MapArea;
+    searchedArea: MapArea | null;
+    outcome: "searched" | "clipped" | "outside-coverage";
+    excludedCoordinateCount: number;
+  };
 };
 /** A complete curated publication; source array order is the stable display order. */
 export type CatalogueBatch = {

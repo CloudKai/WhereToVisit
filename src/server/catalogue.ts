@@ -5,7 +5,11 @@ import type {
   CatalogueResult,
   OperationResult,
 } from "@/shared/contracts";
-import { matchesDiscoveryQuery } from "@/shared/discovery-query";
+import {
+  intersectDiscoveryArea,
+  matchesDiscoveryQuery,
+  sameMapArea,
+} from "@/shared/discovery-query";
 import {
   loadCatalogueFile,
   readCataloguePublication,
@@ -15,11 +19,12 @@ export interface CatalogueProvider {
 }
 const catalogue: CatalogueProvider = {
   async query(input) {
-    if (input.area)
+    if (input.area && input.area.system !== "WGS-84")
       return {
         status: "unavailable",
-        reason: "query-not-supported",
-        message: "Map-area queries are not available yet.",
+        reason: "coordinate-system-unsupported",
+        message:
+          "Area search supports the bounded WGS-84 discovery envelope only. Other map coordinate systems remain unqualified; no conversion is performed.",
       };
     if (input.city !== "Shanghai")
       return {
@@ -63,13 +68,48 @@ const catalogue: CatalogueProvider = {
           reason: batch.unavailableReason?.code ?? "catalogue-not-ready",
           message: batch.unavailableReason?.message ?? batch.coverageMessage,
         };
+      const searchedArea = input.area
+        ? intersectDiscoveryArea(input.area)
+        : null;
+      const excludedCoordinateCount = input.area
+        ? batch.places.filter(
+            (place) =>
+              !place.coordinates ||
+              place.coordinates.system !== input.area?.system,
+          ).length
+        : 0;
+      const outcome = !searchedArea
+        ? "outside-coverage"
+        : sameMapArea(searchedArea, input.area ?? null)
+          ? "searched"
+          : "clipped";
+      const areaMessage = input.area
+        ? `${outcome === "outside-coverage" ? "This area is outside the bounded Shanghai discovery envelope." : outcome === "clipped" ? "Only the intersection with the bounded Shanghai discovery envelope was searched." : "Searched within the bounded Shanghai discovery envelope."} This envelope is not an administrative boundary or exhaustive venue coverage. ${excludedCoordinateCount} catalogue records have missing or incompatible coordinates and cannot appear in area results. An empty result does not mean there are no venues here.`
+        : "";
       return {
         status: "available",
         data: {
-          places: batch.places.filter((place) =>
-            matchesDiscoveryQuery(place, input),
+          ...(input.area
+            ? {
+                areaSearch: {
+                  requestedArea: input.area,
+                  searchedArea,
+                  outcome,
+                  excludedCoordinateCount,
+                },
+              }
+            : {}),
+          places: batch.places.filter(
+            (place) =>
+              (!input.area || searchedArea !== null) &&
+              matchesDiscoveryQuery(place, {
+                ...input,
+                ...(searchedArea ? { area: searchedArea } : {}),
+              }),
           ),
-          coverageMessage: batch.coverageMessage,
+          coverageMessage: [batch.coverageMessage, areaMessage]
+            .filter(Boolean)
+            .join(" "),
           dataKind: batch.kind,
         },
       };

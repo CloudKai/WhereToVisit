@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import type {
   CatalogueQuery,
   CatalogueResult,
+  MapArea,
   OperationResult,
 } from "@/shared/contracts";
 import {
@@ -11,6 +12,11 @@ import {
   parseDiscoveryQuery,
 } from "@/shared/discovery-query";
 import { CatalogueList } from "./catalogue-list";
+import {
+  areaDescription,
+  DiscoveryMap,
+  initialFixtureArea,
+} from "./discovery-map";
 import { OperationState } from "./operation-state";
 
 type Result = OperationResult<CatalogueResult>;
@@ -23,8 +29,29 @@ function catalogueNeighbourhoods(places: CatalogueResult["places"]) {
     ),
   ];
 }
-export function Discovery({ initialResult }: { initialResult: Result }) {
+export function Discovery({
+  initialResult,
+  mapFixtureEnabled = false,
+}: {
+  initialResult: Result;
+  mapFixtureEnabled?: boolean;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState("both");
+  const [pendingArea, setPendingArea] = useState<MapArea>(initialFixtureArea);
+  const [searchedArea, setSearchedArea] = useState<MapArea | null>(null);
+  const [moved, setMoved] = useState(false);
+  const [mapFailed, setMapFailed] = useState(false);
+
+  function select(id: string) {
+    setSelectedId(id);
+    setView("both");
+  }
   const [result, setResult] = useState(initialResult);
+  const fixtureMap =
+    mapFixtureEnabled &&
+    result.status === "available" &&
+    result.data.dataKind === "fixture";
   const [loading, setLoading] = useState(false);
   const [distanceMode, setDistanceMode] = useState("any");
   const [applied, setApplied] = useState<CatalogueQuery>({ city: "Shanghai" });
@@ -49,6 +76,14 @@ export function Discovery({ initialResult }: { initialResult: Result }) {
         throw new Error("Invalid response");
       if (version !== requestVersion.current) return;
       setResult(next);
+      if (next.status === "available") {
+        setSearchedArea(next.data.areaSearch?.requestedArea ?? null);
+        setSelectedId((previous) =>
+          next.data.places.some((place) => place.id === previous)
+            ? previous
+            : null,
+        );
+      }
       if (next.status === "available")
         setNeighbourhoods((previous) => [
           ...new Set([
@@ -71,6 +106,9 @@ export function Discovery({ initialResult }: { initialResult: Result }) {
   function reset() {
     form.current?.reset();
     setDistanceMode("any");
+    setPendingArea(initialFixtureArea);
+    setMoved(false);
+    setSearchedArea(null);
     void load({ city: "Shanghai" });
   }
   return (
@@ -84,7 +122,10 @@ export function Discovery({ initialResult }: { initialResult: Result }) {
           for (const [key, value] of new FormData(event.currentTarget))
             if (typeof value === "string" && value) parameters.set(key, value);
           try {
-            void load(parseDiscoveryQuery(parameters));
+            void load({
+              ...parseDiscoveryQuery(parameters),
+              ...(applied.area ? { area: applied.area } : {}),
+            });
           } catch {
             ++requestVersion.current;
             setLoading(false);
@@ -238,59 +279,151 @@ export function Discovery({ initialResult }: { initialResult: Result }) {
           </div>
         </fieldset>
       </form>
-      {loading ? (
-        <OperationState
-          kind="loading"
-          title="Loading places"
-          message="Checking the current shortlist…"
-        />
-      ) : (
-        <>
-          {applied.distance && (
-            <p>
-              Distance origin: {applied.distance.origin.latitude},{" "}
-              {applied.distance.origin.longitude} (
-              {applied.distance.origin.system}); radius{" "}
-              {applied.distance.radiusMetres} metres. Straight-line distance,
-              not a route.
-            </p>
-          )}
-          {result.status === "available" ? (
-            <>
-              {result.data.places.length === 0 && (
-                <OperationState
-                  kind="unavailable"
-                  title="No matching places"
-                  message="Try fewer filters or reset. Unknown price, coordinates and recommendation types cannot meet known-value filters."
-                />
-              )}
-              <CatalogueList catalogue={result.data} />
-            </>
-          ) : (
-            <OperationState
-              kind={result.status}
-              title={
-                result.status === "error"
-                  ? "Places could not be loaded"
-                  : "Catalogue unavailable"
-              }
-              message={result.message}
+      <fieldset className="actions view-controls" aria-label="Discovery views">
+        <button
+          className="secondary-button"
+          type="button"
+          aria-pressed={view === "map"}
+          onClick={() => setView("map")}
+        >
+          Show map
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          aria-pressed={view === "list"}
+          onClick={() => setView("list")}
+        >
+          Show list
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          aria-pressed={view === "both"}
+          onClick={() => setView("both")}
+        >
+          Show both views
+        </button>
+      </fieldset>
+      <section aria-label="Discovery map" hidden={view === "list"}>
+        {fixtureMap && !mapFailed ? (
+          <DiscoveryMap
+            places={
+              !loading && result.status === "available"
+                ? result.data.places
+                : []
+            }
+            selectedId={selectedId}
+            onSelect={select}
+            pendingArea={pendingArea}
+            searchedArea={searchedArea}
+            moved={moved}
+            onMove={(area) => {
+              setPendingArea(area);
+              setMoved(true);
+            }}
+            onSearch={() => void load({ ...applied, area: pendingArea })}
+            loading={loading}
+            onFailure={() => {
+              setMapFailed(true);
+              setView("both");
+            }}
+          />
+        ) : (
+          <OperationState
+            kind="unavailable"
+            title="Map unavailable"
+            message={
+              mapFailed
+                ? "The development map failed. Your current place list and details remain available."
+                : "Live Shanghai map rendering and branch coordinates are not qualified yet. Browse the source-backed list and external address searches; no exact pins are shown."
+            }
+          >
+            {mapFailed && (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setMapFailed(false)}
+              >
+                Retry development map
+              </button>
+            )}
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setView("list")}
             >
-              {!(
-                result.status === "error" && result.reason === "invalid-query"
-              ) && (
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => void load(applied)}
-                >
-                  Retry catalogue
-                </button>
-              )}
-            </OperationState>
-          )}
-        </>
+              Browse place list
+            </button>
+          </OperationState>
+        )}
+      </section>
+      {searchedArea && (
+        <p>
+          Last completed area search: {areaDescription(searchedArea)}. This is
+          the completed requested viewport; the coverage message identifies the
+          actual searched intersection.
+        </p>
       )}
+      <section aria-label="Discovery list" hidden={view === "map"}>
+        {loading ? (
+          <OperationState
+            kind="loading"
+            title="Loading places"
+            message="Checking the current shortlist…"
+          />
+        ) : (
+          <>
+            {applied.distance && (
+              <p>
+                Distance origin: {applied.distance.origin.latitude},{" "}
+                {applied.distance.origin.longitude} (
+                {applied.distance.origin.system}); radius{" "}
+                {applied.distance.radiusMetres} metres. Straight-line distance,
+                not a route.
+              </p>
+            )}
+            {result.status === "available" ? (
+              <>
+                {result.data.places.length === 0 && (
+                  <OperationState
+                    kind="unavailable"
+                    title="No matching places"
+                    message="Try fewer filters or reset. Unknown price, coordinates and recommendation types cannot meet known-value filters."
+                  />
+                )}
+                <CatalogueList
+                  catalogue={result.data}
+                  selectedId={selectedId}
+                  onSelect={select}
+                />
+              </>
+            ) : (
+              <OperationState
+                kind={result.status}
+                title={
+                  result.status === "error"
+                    ? "Places could not be loaded"
+                    : "Catalogue unavailable"
+                }
+                message={result.message}
+              >
+                {!(
+                  result.status === "error" && result.reason === "invalid-query"
+                ) && (
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={() => void load(applied)}
+                  >
+                    Retry catalogue
+                  </button>
+                )}
+              </OperationState>
+            )}
+          </>
+        )}
+      </section>
     </>
   );
 }

@@ -18,6 +18,7 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         ENABLE_DEVELOPMENT_FIXTURES: "1",
+        ENABLE_DEVELOPMENT_MAP_FIXTURE: "1",
         CATALOGUE_DEVELOPMENT_SOURCE: "./.data/catalogue-scenario.json",
         BETTER_AUTH_URL: "http://127.0.0.1:8180",
         DATABASE_PATH: "./.data/test-shell.sqlite",

@@ -443,3 +443,45 @@ summary:focus-visible {
     padding: 18px;
   }
 }
+
+.view-controls,
+.map-controls {
+  margin-block: 24px;
+  gap: 12px;
+}
+.fixture-map {
+  position: relative;
+  height: 300px;
+  margin-block: 24px;
+  border: 1px solid var(--line);
+  background-color: #eff1e7;
+  background-image:
+    linear-gradient(#dce0d6 1px, transparent 1px),
+    linear-gradient(90deg, #dce0d6 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.map-place {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 44px;
+  min-height: 44px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 700;
+}
+.map-place[aria-pressed="true"],
+.secondary-button[aria-pressed="true"] {
+  background: var(--accent);
+}
+.catalogue-place[data-selected="true"] {
+  border-left: 4px solid var(--ink);
+  padding-left: 16px;
+}
+fieldset.view-controls,
+fieldset.map-controls {
+  border: 0;
+  padding: 0;
+  min-inline-size: 0;
+}

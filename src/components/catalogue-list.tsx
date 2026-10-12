@@ -20,7 +20,15 @@ const classificationLabels = {
   "local-favourite": "Local favourite",
   "highly-reviewed": "Highly reviewed",
 };
-export function CatalogueList({ catalogue }: { catalogue: CatalogueResult }) {
+export function CatalogueList({
+  catalogue,
+  selectedId,
+  onSelect,
+}: {
+  catalogue: CatalogueResult;
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
+}) {
   return (
     <>
       <p role="status">{catalogue.coverageMessage}</p>
@@ -31,8 +39,23 @@ export function CatalogueList({ catalogue }: { catalogue: CatalogueResult }) {
       )}
       <div className="catalogue-list">
         {catalogue.places.map((place) => (
-          <article key={place.id} className="catalogue-place">
+          <article
+            key={place.id}
+            className="catalogue-place"
+            aria-label={`${place.displayName}, ${place.branch ?? place.id}`}
+            data-selected={selectedId === place.id}
+          >
             <h2>{place.displayName}</h2>
+            {onSelect && (
+              <button
+                className="secondary-button"
+                type="button"
+                aria-pressed={selectedId === place.id}
+                onClick={() => onSelect(place.id)}
+              >
+                Select place
+              </button>
+            )}
             <p>
               {place.localName} · {place.branch}
             </p>
@@ -58,7 +81,7 @@ export function CatalogueList({ catalogue }: { catalogue: CatalogueResult }) {
                 : "Rating unknown"}
               .
             </p>
-            <details>
+            <details open={selectedId === place.id ? true : undefined}>
               <summary>Sources and place details</summary>
               {[
                 ["Price", place.price?.sourceEvidenceId],

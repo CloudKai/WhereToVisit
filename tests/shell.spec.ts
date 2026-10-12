@@ -38,9 +38,20 @@ test("visitor sees the bounded source-backed shortlist on phone and desktop", as
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/discover");
-    await expect(page.getByRole("status")).toContainText(
-      "Six source-backed Shanghai food and café branches",
-    );
+    await expect(
+      page.getByRole("region", { name: "Discovery list" }).getByRole("status"),
+    ).toContainText("Six source-backed Shanghai food and café branches");
+    await expect(
+      page.getByRole("heading", { name: "Map unavailable" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Fictional map — development behavior only", {
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Map place:", exact: false }),
+    ).toHaveCount(0);
     const first = page.getByRole("article").first();
     await first.getByText("Sources and place details", { exact: true }).click();
     await expect(
@@ -107,6 +118,20 @@ test("public catalogue exposes six real branches without substituting developmen
     /fictional-cafe|organiserUserId|savedPlaces/,
   );
   expect((await request.get("/development")).status()).toBe(404);
+  const area = await (
+    await request.get(
+      "/api/catalogue?north=31.4&south=31&east=121.8&west=121.2&areaSystem=WGS-84",
+    )
+  ).json();
+  expect(area.data.places).toEqual([]);
+  expect(area.data.dataKind).toBe("real");
+  expect(area.data.areaSearch.excludedCoordinateCount).toBe(6);
+  expect(area.data.coverageMessage).toContain(
+    "missing or incompatible coordinates",
+  );
+  expect(area.data.coverageMessage).toContain(
+    "An empty result does not mean there are no venues here",
+  );
   const unknown = await request.get(
     "/api/catalogue?budget=unknown&recommendationType=unclassified&distance=unknown",
   );

@@ -1,4 +1,4 @@
-import type { CatalogueQuery, Place } from "./contracts";
+import type { CatalogueQuery, MapArea, Place } from "./contracts";
 
 export const budgetLabels = {
   low: "CNY 0–50",
@@ -21,6 +21,11 @@ export function parseDiscoveryQuery(
     "longitude",
     "system",
     "radiusMetres",
+    "north",
+    "south",
+    "east",
+    "west",
+    "areaSystem",
   ];
   for (const key of parameters.keys()) {
     if (!allowed.includes(key) || parameters.getAll(key).length !== 1)
@@ -81,6 +86,30 @@ export function parseDiscoveryQuery(
       throw new Error("Invalid origin or radius.");
     query.distance = { origin: { latitude, longitude, system }, radiusMetres };
   }
+  const areaKeys = ["north", "south", "east", "west", "areaSystem"];
+  if (areaKeys.some((key) => parameters.has(key))) {
+    if (!areaKeys.every((key) => parameters.get(key)?.trim()))
+      throw new Error("Choose complete area bounds and coordinate system.");
+    const north = Number(parameters.get("north"));
+    const south = Number(parameters.get("south"));
+    const east = Number(parameters.get("east"));
+    const west = Number(parameters.get("west"));
+    const system = choice("areaSystem", [
+      "WGS-84",
+      "GCJ-02",
+    ]) as MapArea["system"];
+    if (
+      ![north, south, east, west].every(Number.isFinite) ||
+      Math.abs(north) > 90 ||
+      Math.abs(south) > 90 ||
+      Math.abs(east) > 180 ||
+      Math.abs(west) > 180 ||
+      north <= south ||
+      east <= west
+    )
+      throw new Error("Invalid area bounds.");
+    query.area = { north, south, east, west, system };
+  }
   return query;
 }
 
@@ -99,6 +128,11 @@ export function discoveryParameters(query: CatalogueQuery): URLSearchParams {
     for (const key of ["latitude", "longitude", "system"] as const)
       parameters.set(key, String(query.distance.origin[key]));
     parameters.set("radiusMetres", String(query.distance.radiusMetres));
+  }
+  if (query.area) {
+    for (const key of ["north", "south", "east", "west"] as const)
+      parameters.set(key, String(query.area[key]));
+    parameters.set("areaSystem", query.area.system);
   }
   return parameters;
 }
@@ -166,5 +200,52 @@ export function matchesDiscoveryQuery(
     if (distance === null || distance > query.distance.radiusMetres)
       return false;
   }
+  if (query.area) {
+    const point = place.coordinates;
+    if (
+      !point ||
+      point.system !== query.area.system ||
+      point.latitude < query.area.south ||
+      point.latitude > query.area.north ||
+      point.longitude < query.area.west ||
+      point.longitude > query.area.east
+    )
+      return false;
+  }
   return true;
+}
+
+/** Bounded workflow envelope, not an administrative boundary or exhaustive coverage. */
+export const shanghaiDiscoveryEnvelope: MapArea = {
+  south: 30.7,
+  north: 31.6,
+  west: 120.9,
+  east: 122.0,
+  system: "WGS-84",
+};
+export function intersectDiscoveryArea(area: MapArea): MapArea | null {
+  const clipped = {
+    south: Math.max(area.south, shanghaiDiscoveryEnvelope.south),
+    north: Math.min(area.north, shanghaiDiscoveryEnvelope.north),
+    west: Math.max(area.west, shanghaiDiscoveryEnvelope.west),
+    east: Math.min(area.east, shanghaiDiscoveryEnvelope.east),
+    system: area.system,
+  };
+  return clipped.north > clipped.south && clipped.east > clipped.west
+    ? clipped
+    : null;
+}
+export function sameMapArea(first: MapArea | null, second: MapArea | null) {
+  return (
+    first === second ||
+    Boolean(
+      first &&
+        second &&
+        first.north === second.north &&
+        first.south === second.south &&
+        first.east === second.east &&
+        first.west === second.west &&
+        first.system === second.system,
+    )
+  );
 }
