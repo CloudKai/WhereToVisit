@@ -29,6 +29,11 @@ export function TripDashboard({
   const [title, setTitle] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const retry = useRef<(() => Promise<void>) | null>(null);
+  const initialSave = useRef<{
+    placeId: string;
+    importId?: string;
+    request: Promise<{ intent: TripSaveIntent }>;
+  } | null>(null);
   async function json(path: string, data?: unknown) {
     const response = await fetch(path, {
       cache: "no-store",
@@ -94,12 +99,34 @@ export function TripDashboard({
     void run(async () => {
       let pending = "";
       if (placeId) {
-        const value = await json("/api/trip-save-intents", {
-          placeId,
-          ...(importId ? { importId } : {}),
-        });
-        pending = value.intent.id;
-        if (active) setIntentId(pending);
+        // Repeated effect setup shares one request so anonymous cookie creation
+        // cannot race two separate save intents for the same continuation.
+        if (
+          initialSave.current?.placeId !== placeId ||
+          initialSave.current?.importId !== importId
+        ) {
+          initialSave.current = {
+            placeId,
+            importId,
+            request: json("/api/trip-save-intents", {
+              placeId,
+              ...(importId ? { importId } : {}),
+            }),
+          };
+        }
+        try {
+          const value = await initialSave.current.request;
+          pending = value.intent.id;
+          if (active) setIntentId(pending);
+        } catch (failure) {
+          initialSave.current = null;
+          if (active) {
+            setIntentId("");
+            setIntent(null);
+            await load("");
+            throw failure;
+          }
+        }
       }
       if (active) await load(pending);
     });

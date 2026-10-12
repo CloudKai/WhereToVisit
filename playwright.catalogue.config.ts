@@ -30,6 +30,7 @@ export default defineConfig({
     "day-plans.spec.ts",
     "day-generation.spec.ts",
     "day-editing.spec.ts",
+    "release.spec.ts",
   ],
   workers: 1,
   fullyParallel: false,
