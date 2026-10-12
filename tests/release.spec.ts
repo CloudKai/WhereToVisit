@@ -594,3 +594,97 @@ test("an anonymous save review survives reordered initial HTTP responses", async
     ).trip.savedPlaces.map((member: { placeId: string }) => member.placeId),
   ).toEqual(["fictional-cafe-east"]);
 });
+
+test("a transient initial save failure offers an actionable retry after current-account loading", async ({
+  page,
+}) => {
+  writeFileSync(
+    ".data/catalogue-scenario.json",
+    JSON.stringify(catalogueFixture()),
+  );
+  expect(
+    (
+      await page.request.post("/api/auth/sign-up/email", {
+        headers,
+        data: {
+          name: "Retry organiser",
+          email: `retry-${randomUUID()}@example.invalid`,
+          password: "Retry-password-123",
+        },
+      })
+    ).status(),
+  ).toBe(200);
+  await page.route("**/api/trip-save-intents", (route) => route.abort());
+  await page.route("**/api/trips", async (route) => {
+    const response = await route.fetch();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.fulfill({ response });
+  });
+  await page.goto("/trips?placeId=fictional-cafe-east");
+  const failure = page.getByRole("alert", { name: "Trip request failed" });
+  await expect(failure).toContainText("Retry");
+  await expect(
+    page.getByRole("button", { name: "Sign out", exact: true }),
+  ).toBeVisible();
+  await page.unroute("**/api/trip-save-intents");
+  await failure.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Review your pending save",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Pending save" }),
+  ).toContainText("1 Fictional East Road, Shanghai");
+  expect((await (await page.request.get("/api/trips")).json()).trips).toEqual(
+    [],
+  );
+});
+
+test("leaving a pending save URL loads the current Trips page without waiting forever", async ({
+  page,
+}) => {
+  writeFileSync(
+    ".data/catalogue-scenario.json",
+    JSON.stringify(catalogueFixture()),
+  );
+  let reached: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/trip-save-intents", async (route) => {
+    const response = await route.fetch();
+    reached();
+    await released;
+    await route.fulfill({ response });
+  });
+  try {
+    await page.goto("/trips?placeId=fictional-cafe-east");
+    await pending;
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Trips", exact: true })
+      .click();
+    await expect(page).toHaveURL("http://127.0.0.1:8180/trips");
+    release();
+    await expect(
+      page.getByRole("heading", { name: "Sign in to save", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Waiting for the server" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("status").filter({ hasText: "Loading your account" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("region", { name: "Pending save" }),
+    ).toHaveCount(0);
+  } finally {
+    release();
+  }
+});

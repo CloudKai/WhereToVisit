@@ -54,22 +54,31 @@ export function TripDashboard({
       );
     return value;
   }
-  async function run(operation: () => Promise<void>) {
-    if (busy) return;
+  async function run(
+    operation: () => Promise<void>,
+    isCurrent?: () => boolean,
+  ) {
+    const current = isCurrent ?? (() => true);
+    // A route bootstrap replaces its cancelled predecessor even while busy.
+    // User actions remain serialized by the current busy state.
+    if ((busy && !isCurrent) || !current()) return;
     setBusy(true);
     setError("");
     setNotice("");
     retry.current = operation;
     try {
       await operation();
-      retry.current = null;
+      if (current()) retry.current = null;
     } catch (failure) {
-      setError(
-        `${failure instanceof Error ? failure.message : "The request failed."} Retry to try again. Nothing new is confirmed saved.`,
-      );
+      if (current())
+        setError(
+          `${failure instanceof Error ? failure.message : "The request failed."} Retry to try again. Nothing new is confirmed saved.`,
+        );
     } finally {
-      setBusy(false);
-      setLoading(false);
+      if (current()) {
+        setBusy(false);
+        setLoading(false);
+      }
     }
   }
   async function load(pendingId = intentId) {
@@ -96,40 +105,43 @@ export function TripDashboard({
   // biome-ignore lint/correctness/useExhaustiveDependencies: initial request helpers intentionally use the route values only.
   useEffect(() => {
     let active = true;
-    void run(async () => {
-      let pending = "";
-      if (placeId) {
-        // Repeated effect setup shares one request so anonymous cookie creation
-        // cannot race two separate save intents for the same continuation.
-        if (
-          initialSave.current?.placeId !== placeId ||
-          initialSave.current?.importId !== importId
-        ) {
-          initialSave.current = {
-            placeId,
-            importId,
-            request: json("/api/trip-save-intents", {
+    void run(
+      async () => {
+        let pending = "";
+        if (placeId) {
+          // Repeated effect setup shares one request so anonymous cookie creation
+          // cannot race two separate save intents for the same continuation.
+          if (
+            initialSave.current?.placeId !== placeId ||
+            initialSave.current?.importId !== importId
+          ) {
+            initialSave.current = {
               placeId,
-              ...(importId ? { importId } : {}),
-            }),
-          };
-        }
-        try {
-          const value = await initialSave.current.request;
-          pending = value.intent.id;
-          if (active) setIntentId(pending);
-        } catch (failure) {
-          initialSave.current = null;
-          if (active) {
-            setIntentId("");
-            setIntent(null);
-            await load("");
-            throw failure;
+              importId,
+              request: json("/api/trip-save-intents", {
+                placeId,
+                ...(importId ? { importId } : {}),
+              }),
+            };
+          }
+          try {
+            const value = await initialSave.current.request;
+            pending = value.intent.id;
+            if (active) setIntentId(pending);
+          } catch (failure) {
+            initialSave.current = null;
+            if (active) {
+              setIntentId("");
+              setIntent(null);
+              await load("");
+              throw failure;
+            }
           }
         }
-      }
-      if (active) await load(pending);
-    });
+        if (active) await load(pending);
+      },
+      () => active,
+    );
     return () => {
       active = false;
     };
