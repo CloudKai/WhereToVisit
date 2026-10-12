@@ -847,3 +847,104 @@ test("canonical suggestions cannot mix data kinds or revive an old guest generat
     await guest.dispose();
   }
 });
+
+test("successful canonical receipts survive catalogue outage and withdrawal without replay", async ({
+  request,
+  playwright,
+}) => {
+  const { trip, invitation } = await setup(request);
+  const guest = await playwright.request.newContext({ baseURL: origin });
+  const path = ".data/catalogue-scenario.json",
+    before = readFileSync(path);
+  try {
+    await guest.post(`/api/invitations/${invitation.token}`, {
+      headers,
+      data: { displayName: "Retry guest" },
+    });
+    const suggest = {
+      action: "suggest",
+      placeId: "fictional-cafe-west",
+      operationId: randomUUID(),
+    };
+    const submitted = await mutate(guest, trip.id, suggest);
+    expect(submitted.status()).toBe(200);
+    const id = (await submitted.json()).collaboration.suggestions[0].id;
+    const amend = {
+      action: "amend",
+      suggestionId: id,
+      placeId: "fictional-cafe-west",
+      operationId: randomUUID(),
+    };
+    expect((await mutate(guest, trip.id, amend)).status()).toBe(200);
+    const unresolved = await mutate(guest, trip.id, {
+      action: "suggest",
+      name: "Explicit branch request",
+    });
+    const unresolvedId = (await unresolved.json()).collaboration.suggestions.at(
+      -1,
+    ).id;
+    expect(
+      (
+        await mutate(
+          request,
+          trip.id,
+          { action: "accept", suggestionId: unresolvedId },
+          true,
+        )
+      ).status(),
+    ).toBe(200);
+    const confirm = {
+      action: "confirm",
+      suggestionId: unresolvedId,
+      placeId: "fictional-cafe-west",
+      operationId: randomUUID(),
+    };
+    expect((await mutate(request, trip.id, confirm, true)).status()).toBe(200);
+    for (const unavailable of [true, false]) {
+      const withdrawn = JSON.parse(before.toString());
+      withdrawn.places = withdrawn.places.filter(
+        (place: { id: string }) => place.id !== "fictional-cafe-west",
+      );
+      writeFileSync(path, unavailable ? "{invalid" : JSON.stringify(withdrawn));
+      expect((await request.get("/api/catalogue?city=Shanghai")).status()).toBe(
+        unavailable ? 503 : 200,
+      );
+      expect((await mutate(guest, trip.id, suggest)).status()).toBe(200);
+      expect((await mutate(guest, trip.id, amend)).status()).toBe(200);
+      expect((await mutate(request, trip.id, confirm, true)).status()).toBe(
+        200,
+      );
+      expect(
+        (
+          await mutate(guest, trip.id, {
+            ...suggest,
+            placeId: "fictional-cafe-east",
+          })
+        ).status(),
+      ).toBe(409);
+      const state = (
+        await (
+          await guest.get(`/api/guest-trips/${trip.id}/collaboration`)
+        ).json()
+      ).collaboration;
+      expect(state.suggestions).toHaveLength(2);
+      expect(state.suggestions[1]).toMatchObject({
+        state: "accepted",
+        place: { id: "fictional-cafe-west" },
+      });
+      expect(
+        (await (await request.get(`/api/trips/${trip.id}`)).json()).trip
+          .savedPlaces,
+      ).toHaveLength(2);
+    }
+    await request.post(`/api/trips/${trip.id}/invitation`, {
+      headers,
+      data: { action: "disable" },
+    });
+    expect((await mutate(guest, trip.id, suggest)).status()).toBe(404);
+    expect((await mutate(guest, trip.id, amend)).status()).toBe(404);
+  } finally {
+    writeFileSync(path, before);
+    await guest.dispose();
+  }
+});

@@ -23,11 +23,26 @@ function boundedText(value: unknown, limit: number) {
     invalid(`Use 1–${limit} characters without control characters.`);
   return value.trim();
 }
+type Candidate = { place: Place; kind: "real" | "fixture" };
+function operation(
+  tripId: string,
+  authority: Authority,
+  input: Record<string, unknown>,
+  candidate: undefined,
+  receiptOnly: true,
+): Collaboration | null;
 function operation(
   tripId: string,
   authority: Authority,
   input?: Record<string, unknown>,
-  candidate?: { place: Place; kind: "real" | "fixture" },
+  candidate?: Candidate,
+): Collaboration;
+function operation(
+  tripId: string,
+  authority: Authority,
+  input?: Record<string, unknown>,
+  candidate?: Candidate,
+  receiptOnly = false,
 ) {
   const { sqlite: db } = openDatabase();
   try {
@@ -72,6 +87,7 @@ function operation(
             409,
           );
         if (!receipt) {
+          if (receiptOnly) return null;
           if (state.receipts.length >= 10000)
             throw new TripFailure(
               "collaboration-limit",
@@ -307,8 +323,10 @@ export async function changeCollaboration(
   authority: Authority,
   input: Record<string, unknown>,
 ) {
-  // Check access before catalogue work and again inside the mutation transaction.
-  readCollaboration(tripId, authority);
+  // Resolve known receipts before catalogue work, checking current authority first.
+  // A fresh mutation checks both authority and receipt again after asynchronous lookup.
+  const replay = operation(tripId, authority, input, undefined, true);
+  if (replay) return replay;
   let candidate: { place: Place; kind: "real" | "fixture" } | undefined;
   if (
     ["suggest", "amend", "confirm"].includes(String(input.action)) &&
