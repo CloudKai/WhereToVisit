@@ -281,9 +281,9 @@ export function joinInvitation(
       ? (browserToken as string)
       : randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + GUEST_LIFETIME_MS).toISOString();
-    db.prepare("DELETE FROM guest_sessions WHERE expires_at<=?").run(
-      new Date().toISOString(),
-    );
+    db.prepare(
+      "DELETE FROM guest_sessions WHERE expires_at<=? AND participant_id IN (SELECT id FROM guest_participants WHERE json_extract(document, '$.dataKind')=?)",
+    ).run(new Date().toISOString(), trip.dataKind);
     db.prepare(
       "INSERT INTO guest_participants(id,trip_id,document) VALUES(?,?,?)",
     ).run(participant.id, trip.id, JSON.stringify(participant));

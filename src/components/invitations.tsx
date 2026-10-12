@@ -5,6 +5,7 @@ import type {
   InvitationManagement,
   SharedGuestTrip,
 } from "@/shared/contracts";
+import { ImportedEvidence } from "./imported-evidence";
 
 class GuestRequestFailure extends Error {
   constructor(
@@ -364,52 +365,7 @@ export function GuestTrip({
                   <div
                     key={`${evidence.source.id}:${evidence.extraction.codePointStart}`}
                   >
-                    <p>Original wording: “{evidence.extraction.quote}”</p>
-                    <p>User-selected branch; independent verification: no.</p>
-                    <p>
-                      <a
-                        href={evidence.source.canonicalUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Original article
-                      </a>{" "}
-                      · revision {evidence.source.revision}
-                    </p>
-                    <p>
-                      {evidence.source.attribution} ·{" "}
-                      <a
-                        href={evidence.source.licenseUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {evidence.source.license}
-                      </a>
-                    </p>
-                    <p>{evidence.source.changes}</p>
-                    {evidence.source.historyUrl && (
-                      <p>
-                        <a
-                          href={evidence.source.historyUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Contributor history
-                        </a>
-                      </p>
-                    )}
-                    {evidence.source.revisionUrl && (
-                      <p>
-                        <a
-                          href={evidence.source.revisionUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Exact source revision
-                        </a>
-                      </p>
-                    )}
-                    <p>{evidence.source.limits}</p>
+                    <ImportedEvidence evidence={evidence} />
                   </div>
                 ))}
                 {member.place.providerReferences

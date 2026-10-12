@@ -131,6 +131,7 @@ test("real organiser account persists a private Shanghai Trip across sign-in ses
 test("explicit authenticated saves retain licensed evidence after draft deletion, deduplicate branches and separate selection", async ({
   request,
   playwright,
+  browser,
 }) => {
   const id = await imported(request);
   await confirmed(request, id);
@@ -172,6 +173,59 @@ test("explicit authenticated saves retain licensed evidence after draft deletion
     },
     confirmation: { independentVerification: false },
   });
+  const organiserBrowser = await browser.newContext({
+    storageState: await request.storageState(),
+  });
+  const guestBrowser = await browser.newContext();
+  try {
+    const organiserPage = await organiserBrowser.newPage();
+    await organiserPage.goto("/trips");
+    await organiserPage
+      .getByText("Saved sources and branch evidence", { exact: true })
+      .click();
+    const invitation = (
+      await (
+        await request.post(`/api/trips/${saved.id}/invitation`, {
+          headers,
+          data: { action: "create" },
+        })
+      ).json()
+    ).invitation;
+    const guestPage = await guestBrowser.newPage();
+    await guestPage.goto(invitation.url);
+    await guestPage.getByLabel("Display name").fill("Source companion");
+    await guestPage.getByRole("button", { name: "Join as guest" }).click();
+    await guestPage
+      .getByText("Shared sources and branch evidence", { exact: true })
+      .click();
+    for (const view of [organiserPage, guestPage]) {
+      await expect(
+        view.getByText("Original wording: “Fictional Scenario Café”", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        view.getByText("User-selected branch; independent verification: no.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        view.getByRole("link", { name: "CC BY-SA 4.0", exact: true }),
+      ).toHaveAttribute(
+        "href",
+        "https://creativecommons.org/licenses/by-sa/4.0/",
+      );
+      await expect(
+        view.getByText(
+          "Listing names extracted verbatim; other article wording, links, prices and location fields were not interpreted.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+    }
+  } finally {
+    await organiserBrowser.close();
+    await guestBrowser.close();
+  }
   const west = await intent(request, "fictional-cafe-west");
   await request.post(`/api/trips/${saved.id}`, {
     headers,

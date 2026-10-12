@@ -67,7 +67,7 @@ test("stored fictional imports cannot be read or mutated after development stora
       )
       .toBe(200);
     const originals = [];
-    for (const title of ["Resolution", "Unavailable", "Slow", "Queued"]) {
+    for (const title of ["Resolution", "Unavailable"]) {
       const sourceUrl = `https://en.wikivoyage.org/wiki/Fixture_${title}`;
       const response = await request.post("/api/imports", {
         headers: { Origin: origin },
@@ -203,6 +203,21 @@ test("stored fictional imports cannot be read or mutated after development stora
       await request.get(`/api/trips/${trip.id}/invitation`)
     ).json();
     expect(savedTrip.savedPlaces[0].importedEvidence).toHaveLength(1);
+    // Admit pending workers immediately before stopping development: invitation setup
+    // must not allow the Slow fixture to finish between its snapshot and the switch.
+    for (const title of ["Slow", "Queued"]) {
+      const sourceUrl = `https://en.wikivoyage.org/wiki/Fixture_${title}`;
+      const response = await request.post("/api/imports", {
+        headers,
+        data: { sourceUrl },
+      });
+      expect(response.status()).toBe(202);
+      const job = (await response.json()).job;
+      const before = (
+        await (await request.get(`/api/imports/${job.id}`)).json()
+      ).job;
+      originals.push({ id: job.id, sourceUrl, before });
+    }
     await stop(next);
     next = null;
     next = launch(["run", "start", "--", "--port", "3100"], {
