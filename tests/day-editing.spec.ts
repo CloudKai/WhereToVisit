@@ -43,7 +43,10 @@ function evidence() {
     ],
   };
 }
-async function prepare(request: APIRequestContext) {
+async function prepare(
+  request: APIRequestContext,
+  pace: "balanced" | null = "balanced",
+) {
   writeFileSync(source, JSON.stringify(evidence()));
   expect(
     (
@@ -103,7 +106,7 @@ async function prepare(request: APIRequestContext) {
           expectedRevision: 0,
           selectionRevision: state.selectionRevision,
           visitDate: "2026-12-31",
-          pace: "balanced",
+          pace,
         },
       })
     ).json()
@@ -126,7 +129,7 @@ async function prepare(request: APIRequestContext) {
 test("edited desired times expose fictional hours, travel and next-day conflicts", async ({
   page,
 }) => {
-  const trip = await prepare(page.request);
+  const trip = await prepare(page.request, null);
   await page.goto("/trips");
   const result = page.getByRole("region", {
     name: "Generated day plan",

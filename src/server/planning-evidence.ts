@@ -211,16 +211,28 @@ export function planningEvidence(
     rejected();
   }
 }
+function projectedOperatingHours(
+  evidence: Evidence | null,
+  visitDate: string,
+): DayPlan["operatingHours"] {
+  return evidence
+    ? evidence.hours.map(({ evidence: sourceExplanation, ...hours }) => ({
+        ...hours,
+        sourceExplanation,
+        visitDate,
+        timeZone: "Asia/Shanghai",
+        provider: evidence.provider,
+        retrievedAt: evidence.retrievedAt,
+      }))
+    : [];
+}
+function assumedDwellMinutes(pace: DayPlanRequest["pace"]) {
+  return pace === "relaxed" ? 60 : pace === "busy" ? 30 : 45;
+}
 export function applyPlanningEvidence(plan: DayPlan, evidence: Evidence) {
-  plan.operatingHours = evidence.hours.map(
-    ({ evidence: sourceExplanation, ...hours }) => ({
-      ...hours,
-      sourceExplanation,
-      visitDate: plan.request.visitDate,
-      timeZone: "Asia/Shanghai",
-      provider: evidence.provider,
-      retrievedAt: evidence.retrievedAt,
-    }),
+  plan.operatingHours = projectedOperatingHours(
+    evidence,
+    plan.request.visitDate,
   );
   const requested = plan.stops.map((stop) => stop.placeId);
   const closed = new Set(
@@ -296,12 +308,7 @@ export function applyPlanningEvidence(plan: DayPlan, evidence: Evidence) {
     );
     return;
   }
-  const dwell =
-    plan.request.pace === "relaxed"
-      ? 60
-      : plan.request.pace === "busy"
-        ? 30
-        : 45;
+  const dwell = assumedDwellMinutes(plan.request.pace);
   plan.assumptions = [
     `Assumed Shanghai planning window 09:00–18:00; not a venue fact or requested start time.`,
     `Assumed ${dwell} minute visit per stop (${plan.request.pace ?? "unset/default balanced"} pace), not a venue duration.`,
@@ -357,16 +364,10 @@ export function applyEditedPlanningEvidence(
   plan: DayPlan,
   evidence: Evidence | null,
 ) {
-  plan.operatingHours = evidence
-    ? evidence.hours.map(({ evidence: sourceExplanation, ...hours }) => ({
-        ...hours,
-        sourceExplanation,
-        visitDate: plan.request.visitDate,
-        timeZone: "Asia/Shanghai",
-        provider: evidence.provider,
-        retrievedAt: evidence.retrievedAt,
-      }))
-    : [];
+  plan.operatingHours = projectedOperatingHours(
+    evidence,
+    plan.request.visitDate,
+  );
   plan.travelLegs = plan.stops.slice(1).map((stop, index) => ({
     fromPlaceId: plan.stops[index].placeId,
     toPlaceId: stop.placeId,
@@ -441,12 +442,7 @@ export function applyEditedPlanningEvidence(
     );
     return;
   }
-  const dwell =
-    plan.request.pace === "relaxed"
-      ? 60
-      : plan.request.pace === "busy"
-        ? 30
-        : 45;
+  const dwell = assumedDwellMinutes(plan.request.pace);
   plan.assumptions.push(
     "Assumed Shanghai planning window 09:00–18:00; user-desired times do not verify feasibility.",
     `Assumed ${dwell} minute visit per stop; no start-area journey, taxi wait or fare is assumed.`,
