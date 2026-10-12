@@ -110,7 +110,14 @@ export function changeTrip(
       const trip = row ? (JSON.parse(row.document) as Trip) : null;
       if (!trip || !visibleTrip(trip))
         throw new TripFailure("not-found", "Private Trip not found.", 404);
+      const previousDataKind = trip.dataKind;
       change(trip);
+      if (trip.dataKind !== previousDataKind) {
+        // A later return to the original kind must never revive an old guest generation.
+        db.prepare(
+          "UPDATE trip_invitations SET document=json_set(document, '$.state', 'disabled') WHERE trip_id=?",
+        ).run(id);
+      }
       trip.updatedAt = new Date().toISOString();
       db.prepare(
         "UPDATE trips SET document=? WHERE id=? AND organiser_user_id=?",

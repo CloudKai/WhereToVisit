@@ -293,3 +293,39 @@ export type TripSaveIntent = {
   place: Place;
   importedEvidence: ResolvedImportPlace["importedEvidence"];
 };
+
+/** Display names label attribution; only the server session grants guest authority. */
+export type GuestParticipant = {
+  id: string;
+  displayName: string;
+  displayNumber: number;
+  accessActive: boolean;
+};
+export type TripInvitation = {
+  generation: string;
+  token: string;
+  url: string;
+  state: "active" | "disabled";
+};
+export type InvitationManagement = {
+  invitation: TripInvitation | null;
+  participants: GuestParticipant[];
+};
+/** Deliberate shared projection excludes organiser and temporary-import identities. */
+export type SharedGuestTrip = {
+  trip: Pick<
+    Trip,
+    "id" | "title" | "city" | "dataKind" | "selectedPlaceIds" | "dayPlanIds"
+  > & {
+    savedPlaces: {
+      placeId: string;
+      place: Place;
+      importedEvidence: Omit<
+        ResolvedImportPlace["importedEvidence"][number],
+        "importId" | "mentionId"
+      >[];
+    }[];
+  };
+  participant: GuestParticipant;
+  participants: GuestParticipant[];
+};

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Trip, TripSaveIntent } from "@/shared/contracts";
+import { InvitationControls } from "./invitations";
 
 type Identity = { id: string; email: string };
 export function TripDashboard({
@@ -325,6 +326,10 @@ export function TripDashboard({
                   Update title
                 </button>
               </form>
+              <InvitationControls
+                key={`${trip.id}:${trip.dataKind}`}
+                tripId={trip.id}
+              />
               {!trip.savedPlaces.length && (
                 <p>
                   No saved Places yet. Browse discovery or confirm an imported

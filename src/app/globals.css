@@ -549,3 +549,9 @@ fieldset.map-controls {
 .trip-workflow {
   overflow-wrap: anywhere;
 }
+
+[aria-label="Shared Trip"] > .text-link {
+  display: inline-block;
+  margin-right: 1rem;
+  margin-bottom: 1rem;
+}

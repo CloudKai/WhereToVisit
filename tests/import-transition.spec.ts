@@ -22,6 +22,7 @@ async function stop(child: ChildProcess | null) {
 }
 test("stored fictional imports cannot be read or mutated after development storage becomes production", async ({
   request,
+  playwright,
 }) => {
   mkdirSync(".data", { recursive: true });
   const source = `./.data/transition-catalogue-${randomBytes(8).toString("hex")}.json`;
@@ -39,6 +40,7 @@ test("stored fictional imports cannot be read or mutated after development stora
     ENABLE_DEVELOPMENT_TRIP_FIXTURE: "1",
   };
   execFileSync("npm", ["run", "db:migrate"], { env, stdio: "pipe" });
+  const guest = await playwright.request.newContext({ baseURL: origin });
   let next: ChildProcess | null = null,
     nginx: ChildProcess | null = null;
   try {
@@ -139,6 +141,22 @@ test("stored fictional imports cannot be read or mutated after development stora
         })
       ).json()
     ).trip;
+    const initialInvitation = (
+      await (
+        await request.post(`/api/trips/${trip.id}/invitation`, {
+          headers,
+          data: { action: "create" },
+        })
+      ).json()
+    ).invitation;
+    expect(
+      (
+        await guest.post(`/api/invitations/${initialInvitation.token}`, {
+          headers,
+          data: { displayName: "Real empty guest" },
+        })
+      ).status(),
+    ).toBe(201);
     const savedTrip = (
       await (
         await request.post(`/api/trips/${trip.id}`, {
@@ -148,6 +166,42 @@ test("stored fictional imports cannot be read or mutated after development stora
       ).json()
     ).trip;
     expect(savedTrip.dataKind).toBe("fixture");
+    expect(
+      (await guest.get(`/api/invitations/${initialInvitation.token}`)).status(),
+    ).toBe(404);
+    expect((await guest.get(`/api/guest-trips/${trip.id}`)).status()).toBe(404);
+    const hiddenOldInvitation = await (
+      await request.get(`/api/trips/${trip.id}/invitation`)
+    ).json();
+    expect(hiddenOldInvitation).toEqual({ invitation: null, participants: [] });
+    const fixtureInvitation = (
+      await (
+        await request.post(`/api/trips/${trip.id}/invitation`, {
+          headers,
+          data: { action: "create" },
+        })
+      ).json()
+    ).invitation;
+    expect(
+      (
+        await guest.post(`/api/invitations/${fixtureInvitation.token}`, {
+          headers,
+          data: { displayName: "Fixture guest" },
+        })
+      ).status(),
+    ).toBe(201);
+    const sharedFixture = (
+      await (await guest.get(`/api/guest-trips/${trip.id}`)).json()
+    ).shared;
+    expect(sharedFixture.trip.dataKind).toBe("fixture");
+    expect(sharedFixture.participants).toHaveLength(1);
+    expect(sharedFixture.participants[0].displayName).toBe("Fixture guest");
+    expect(
+      sharedFixture.trip.savedPlaces[0].importedEvidence[0],
+    ).not.toHaveProperty("importId");
+    const retainedInvitation = await (
+      await request.get(`/api/trips/${trip.id}/invitation`)
+    ).json();
     expect(savedTrip.savedPlaces[0].importedEvidence).toHaveLength(1);
     await stop(next);
     next = null;
@@ -170,6 +224,30 @@ test("stored fictional imports cannot be read or mutated after development stora
       )
       .toBe(200);
     expect((await request.get(`/api/trips/${trip.id}`)).status()).toBe(404);
+    expect(
+      (await request.get(`/api/trips/${trip.id}/invitation`)).status(),
+    ).toBe(404);
+    for (const action of ["create", "disable", "replace"])
+      expect(
+        (
+          await request.post(`/api/trips/${trip.id}/invitation`, {
+            headers,
+            data: { action },
+          })
+        ).status(),
+      ).toBe(404);
+    expect(
+      (await guest.get(`/api/invitations/${fixtureInvitation.token}`)).status(),
+    ).toBe(404);
+    expect(
+      (
+        await guest.post(`/api/invitations/${fixtureInvitation.token}`, {
+          headers,
+          data: { displayName: "Must not join" },
+        })
+      ).status(),
+    ).toBe(404);
+    expect((await guest.get(`/api/guest-trips/${trip.id}`)).status()).toBe(404);
     expect((await (await request.get("/api/trips")).json()).trips).toEqual([]);
     expect(
       (await request.get(`/api/trip-save-intents/${pending.id}`)).status(),
@@ -271,6 +349,21 @@ test("stored fictional imports cannot be read or mutated after development stora
       (await (await request.get(`/api/trip-save-intents/${pending.id}`)).json())
         .intent,
     ).toEqual(pending);
+    expect(
+      await (await request.get(`/api/trips/${trip.id}/invitation`)).json(),
+    ).toEqual(retainedInvitation);
+    expect(
+      (await (await guest.get(`/api/guest-trips/${trip.id}`)).json()).shared,
+    ).toEqual(sharedFixture);
+    const resumedFixture = await guest.post(
+      `/api/invitations/${fixtureInvitation.token}`,
+      { headers, data: { displayName: "Must resume" } },
+    );
+    expect(resumedFixture.status()).toBe(200);
+    expect((await resumedFixture.json()).shared).toEqual(sharedFixture);
+    expect(
+      await (await request.get(`/api/trips/${trip.id}/invitation`)).json(),
+    ).toEqual(retainedInvitation);
     for (const original of originals) {
       const restored = (
         await (await request.get(`/api/imports/${original.id}`)).json()
@@ -283,5 +376,6 @@ test("stored fictional imports cannot be read or mutated after development stora
   } finally {
     await stop(next);
     await stop(nginx);
+    await guest.dispose();
   }
 });
