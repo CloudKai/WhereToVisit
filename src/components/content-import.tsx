@@ -145,8 +145,7 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                 .
               </p>
               <p>
-                {resolved.importedEvidence.length} source mentions · Place
-                identity {resolved.place.id} ·{" "}
+                {resolved.importedEvidence.length} source mentions ·{" "}
                 {resolved.dataKind === "fixture"
                   ? "Fictional development draft"
                   : "User-confirmed association"}
@@ -353,9 +352,9 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                     )}
                     {mention.confirmation?.candidateId === candidate.id && (
                       <p>
-                        Selected branch · Place identity {candidate.place.id}.
-                        Confirmed {mention.confirmation.confirmedAt}. Exact pins
-                        remain unavailable; the link is an address search.
+                        Selected branch. Confirmed{" "}
+                        {mention.confirmation.confirmedAt}. Exact pins remain
+                        unavailable; the link is an address search.
                       </p>
                     )}
                   </div>
