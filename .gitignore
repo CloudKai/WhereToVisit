@@ -1,0 +1,22 @@
+# Local planning, research, and agent context
+/AGENTS.md
+/GLOSSARY.md
+/docs/product-context.md
+/docs/research/
+/docs/agents/
+/docs/adr/
+/.scratch/
+
+# Application and local runtime
+/node_modules/
+/.next/
+/.data/
+*.sqlite
+*.sqlite-*
+.env*
+!.env.example
+/test-results/
+/playwright-report/
+/output/playwright/
+/.nginx/
+*.tsbuildinfo
