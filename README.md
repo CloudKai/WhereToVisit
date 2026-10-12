@@ -48,7 +48,7 @@ npx --no-install playwright install chromium
 npm run test:e2e
 ```
 
-The three smoke scenarios start the actual production build on loopback 3100 and NGINX on loopback 8180. Leave those ports free and keep Docker running. They exercise phone/desktop navigation, keyboard access, truthful unavailable discovery and the public catalogue/fixture isolation boundary. The suite intentionally enables the fixture flag in production and verifies that examples remain inaccessible. It creates no accounts and never uses the local database. Screenshots/traces are ignored under `test-results/`. Real providers and deployed reachability require separate qualification.
+The three smoke scenarios start the actual production build on loopback 3100 and NGINX on loopback 8180. Leave those ports free and keep Docker running. They exercise phone/desktop navigation, keyboard access, truthful unavailable discovery and the public catalogue/fixture isolation boundary. The suite intentionally enables the fixture flag in production and verifies that examples remain inaccessible. It assigns an isolated test database path and a generated secret; these foundation scenarios create no accounts and never use the developer database. Screenshots/traces are ignored under `test-results/`. Real providers and deployed reachability require separate qualification.
 
 | Command | Purpose |
 | --- | --- |

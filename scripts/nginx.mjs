@@ -1,5 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
 
 const image =
@@ -59,6 +65,8 @@ const mount = [
 ];
 docker(["run", "--rm", "--entrypoint", "nginx", ...mount, image, "-t"]);
 if (action === "check") process.exit(0);
+const runDirectory = mkdtempSync(resolve(".nginx/run-"));
+const cidFile = resolve(runDirectory, "container-id");
 const child = spawn(
   "docker",
   [
@@ -66,6 +74,8 @@ const child = spawn(
     "--rm",
     "--name",
     name,
+    "--cidfile",
+    cidFile,
     "-p",
     `127.0.0.1:${frontPort}:8080`,
     ...mount,
@@ -74,18 +84,34 @@ const child = spawn(
   { stdio: "inherit" },
 );
 let stopping = false;
+let cleaned = false;
 function stop() {
-  if (stopping) return;
   stopping = true;
-  spawnSync("docker", ["stop", "-t", "2", name], { stdio: "ignore" });
+  if (cleaned) return;
+  let id;
+  try {
+    id = readFileSync(cidFile, "utf8").trim();
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  // Never stop by name here: a rejected duplicate launch owns no container.
+  if (!/^[a-f0-9]{64}$/.test(id)) return;
+  spawnSync("docker", ["stop", "-t", "2", id], { stdio: "ignore" });
+  cleaned = true;
 }
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
-process.on("exit", stop);
+process.on("exit", () => {
+  stop();
+  rmSync(runDirectory, { recursive: true, force: true });
+});
 child.on("error", (error) => {
   console.error(error.message);
   process.exit(1);
 });
 child.on("exit", (code) => {
-  process.exit(stopping ? 0 : (code ?? 1));
+  const interrupted = stopping;
+  stop();
+  process.exit(interrupted ? 0 : (code ?? 1));
 });
