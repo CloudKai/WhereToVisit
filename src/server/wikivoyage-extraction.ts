@@ -193,7 +193,7 @@ export function extractListings(
     normalizedSourceHash: hash,
     normalizationVersion,
     limits:
-      "Historical listing labels only; no endorsement, current operation, branch, address, coordinates or rating established. Matching and Trip saving remain unavailable.",
+      "Historical listing labels only; no endorsement, current operation, branch, address, coordinates or rating established. Listing extraction does not confirm a branch. Optional sourced-shortlist matching requires separate user selection; live provider matching and Trip saving remain unavailable.",
   };
   const mentions: Mention[] = [];
   let skipped = false;

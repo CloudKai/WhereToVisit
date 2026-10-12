@@ -529,3 +529,11 @@ fieldset.map-controls {
 .import-attribution a {
   text-underline-offset: 0.2em;
 }
+
+.import-candidate {
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-wrap: anywhere;
+}

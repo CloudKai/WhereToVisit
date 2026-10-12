@@ -10,6 +10,7 @@ import {
 import {
   createImport,
   listImports,
+  resolvedImportPlaces,
   runImportQueue,
 } from "@/server/import-jobs";
 import { ImportFailure } from "@/server/import-policy";
@@ -18,7 +19,7 @@ export async function GET() {
   try {
     const jobs = listImports(await requestSession());
     after(runImportQueue);
-    return importResponse({ jobs });
+    return importResponse({ jobs, resolvedPlaces: resolvedImportPlaces(jobs) });
   } catch (error) {
     return importError(error);
   }

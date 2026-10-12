@@ -5,7 +5,13 @@ import {
   developmentImportFixturesEnabled,
   isDevelopmentImportFixture,
 } from "@/development/import-source";
-import type { Import } from "@/shared/contracts";
+import { developmentResolutionPlaces } from "@/development/resolution-results";
+import type {
+  Import,
+  ResolutionCandidate,
+  ResolvedImportPlace,
+} from "@/shared/contracts";
+import { queryCatalogue } from "./catalogue";
 import { getAuthConfiguration } from "./config";
 import { openDatabase } from "./db/connection";
 import { articleInput, ImportFailure } from "./import-policy";
@@ -517,4 +523,202 @@ export function runImportQueue() {
     state.running = null;
   });
   return state.running;
+}
+
+/** Names retrieve bounded canonical candidates, never establish branch identity or verification. */
+export async function resolveImport(
+  session: string,
+  id: string,
+  input:
+    | { action: "resolve" }
+    | {
+        action: "confirm";
+        mentionId: string;
+        candidateId: string;
+        acknowledgeOutsideCity?: boolean;
+      },
+) {
+  const existing = getImport(session, id);
+  if (!existing) return null;
+  const result =
+    input.action === "resolve"
+      ? await queryCatalogue({ city: "Shanghai" })
+      : null;
+  return withDatabase((db) =>
+    db.transaction(() => {
+      cleanup(db);
+      const row = db
+        .prepare(
+          `SELECT document FROM import_jobs WHERE id=? AND session_digest=?${visibleImportsSql()}`,
+        )
+        .get(id, session) as { document: string } | undefined;
+      if (!row) return null;
+      const job: Import = JSON.parse(row.document);
+      if (
+        !job.evidence ||
+        !job.mentions.length ||
+        !["awaiting-confirmation", "completed"].includes(job.status) ||
+        job.reason?.code === "cancelled"
+      )
+        throw new ImportFailure(
+          "resolution-unavailable",
+          "Only extracted evidence-bearing drafts can be resolved.",
+        );
+      if (input.action === "resolve") {
+        const normalize = (value: string) =>
+          value
+            .normalize("NFKC")
+            .trim()
+            .toLocaleLowerCase("en")
+            .replace(/\s+/g, " ");
+        for (const mention of job.mentions) {
+          if (mention.resolutionStatus === "user-confirmed") continue;
+          const available =
+            result?.status === "available" &&
+            (result.data.dataKind === "real" ||
+              result.data.dataKind === job.dataKind);
+          const places =
+            available && result.status === "available"
+              ? result.data.places
+              : [];
+          const name = normalize(mention.nameHint);
+          mention.candidates = developmentResolutionPlaces(
+            job,
+            available ? places : [],
+          )
+            .filter((place) => {
+              const names = [place.displayName, place.localName].filter(
+                (value): value is string => !!value,
+              );
+              // A generic chain prefix retrieves separate branches; it never merges them.
+              return (
+                name.length >= 4 &&
+                names.some(
+                  (value) =>
+                    normalize(value) === name ||
+                    normalize(value).startsWith(`${name} `) ||
+                    normalize(value).startsWith(`${name}(`) ||
+                    normalize(value).startsWith(`${name} (`),
+                )
+              );
+            })
+            .flatMap((place) => {
+              const reference = place.providerReferences.find(
+                (item) => item.qualification === "qualified",
+              );
+              const evidence = place.evidence.filter((item) =>
+                item.establishedFacts.includes("identity"),
+              );
+              if (!reference || !place.address || !evidence.length) return [];
+              return [
+                {
+                  id: place.id,
+                  place,
+                  providerReference: reference,
+                  branchEvidence: evidence,
+                  outsideCity: place.city !== job.city,
+                  reason:
+                    "Name clue retrieves this source-backed canonical branch. Compare the full address and evidence before choosing. Address searches are not exact provider results; operation and coordinates remain unknown.",
+                } satisfies ResolutionCandidate,
+              ];
+            })
+            .slice(0, 20);
+          mention.resolution = {
+            outcome: available
+              ? mention.candidates.length
+                ? "uncertain"
+                : "no-match"
+              : "provider-unavailable",
+            scope: "canonical-catalogue",
+            policy: "canonical-names-v1",
+            message: available
+              ? mention.candidates.length
+                ? "Choose a specific branch only after reviewing its source evidence."
+                : "No candidate in the bounded canonical shortlist. Broader live provider lookup remains unqualified; this does not establish that the venue is absent."
+              : "The canonical shortlist is unavailable or incompatible with this draft. Broader live provider lookup remains unqualified. Retry resolution explicitly.",
+          };
+        }
+      } else {
+        const mention = job.mentions.find(
+          (item) => item.id === input.mentionId,
+        );
+        const candidate = mention?.candidates.find(
+          (item) => item.id === input.candidateId,
+        );
+        if (!mention || !candidate)
+          throw new ImportFailure(
+            "candidate-not-found",
+            "Choose a candidate returned for this mention in your draft.",
+          );
+        if (candidate.outsideCity && input.acknowledgeOutsideCity !== true)
+          throw new ImportFailure(
+            "outside-city-acknowledgement-required",
+            "Explicitly acknowledge the candidate's different city or leave it unresolved.",
+          );
+        if (
+          mention.confirmation &&
+          mention.confirmation.candidateId !== candidate.id
+        )
+          throw new ImportFailure(
+            "already-confirmed",
+            "This mention already has a confirmed branch.",
+          );
+        mention.placeId = candidate.place.id;
+        mention.resolutionStatus = "user-confirmed";
+        mention.confirmation ??= {
+          candidateId: candidate.id,
+          confirmedAt: new Date().toISOString(),
+          method: "user-selection",
+          independentVerification: false,
+          outsideCityAcknowledged: candidate.outsideCity,
+        };
+      }
+      job.status = job.mentions.every(
+        (mention) => mention.resolutionStatus === "user-confirmed",
+      )
+        ? "completed"
+        : "awaiting-confirmation";
+      job.updatedAt = new Date().toISOString();
+      db.prepare(
+        "UPDATE import_jobs SET status=?,updated_at=?,document=? WHERE id=? AND session_digest=?",
+      ).run(job.status, Date.now(), JSON.stringify(job), id, session);
+      return job;
+    })(),
+  );
+}
+
+export function resolvedImportPlaces(jobs: Import[]): ResolvedImportPlace[] {
+  const places = new Map<string, ResolvedImportPlace>();
+  for (const job of jobs) {
+    if (!job.evidence) continue;
+    for (const mention of job.mentions) {
+      if (
+        mention.resolutionStatus !== "user-confirmed" ||
+        !mention.confirmation ||
+        !mention.placeId
+      )
+        continue;
+      const candidate = mention.candidates.find(
+        (item) =>
+          item.id === mention.confirmation?.candidateId &&
+          item.place.id === mention.placeId,
+      );
+      if (!candidate) continue;
+      const key = `${job.dataKind}:${candidate.place.id}`;
+      const resolved = places.get(key) ?? {
+        place: candidate.place,
+        dataKind: job.dataKind,
+        importedEvidence: [],
+      };
+      resolved.importedEvidence.push({
+        importId: job.id,
+        mentionId: mention.id,
+        source: job.evidence,
+        extraction: mention.extraction,
+        confirmation: mention.confirmation,
+      });
+      places.set(key, resolved);
+    }
+  }
+  return [...places.values()];
 }

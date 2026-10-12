@@ -55,6 +55,15 @@ export async function developmentArticle(
   }
   let wikitext =
     "== Eat ==\n* {{eat|name= Café 🥟 One |url=}}\n== Drink ==\n* {{drink|name=Tea Two}}";
+  if (title === "Fixture Resolution" || title === "Fixture ResolutionSecond")
+    wikitext =
+      "== Eat ==\n{{eat|name=Fictional Scenario Café}}\n{{eat|name=Unknown Fictional Dumplings}}";
+  if (title === "Fixture LocalChain")
+    wikitext = "== Drink ==\n{{drink|name=蓝瓶咖啡}}";
+  if (title === "Fixture Canonical")
+    wikitext = "== Drink ==\n{{drink|name=Blue Bottle Coffee — Zhangyuan}}";
+  if (title === "Fixture Outside")
+    wikitext = "== Drink ==\n{{drink|name=Fictional Outside Café}}";
   if (title === "Fixture Empty") wikitext = "== Eat ==\n\n== Drink ==\n";
   if (title === "Fixture Prose")
     wikitext = "== Eat ==\nSome restaurants are described here.";

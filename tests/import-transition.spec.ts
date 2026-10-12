@@ -1,7 +1,9 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+import { catalogueFixture } from "./catalogue-fixture";
 
 const origin = "http://127.0.0.1:8180";
 function launch(args: string[], env: NodeJS.ProcessEnv) {
@@ -21,9 +23,13 @@ async function stop(child: ChildProcess | null) {
 test("stored fictional imports cannot be read or mutated after development storage becomes production", async ({
   request,
 }) => {
+  mkdirSync(".data", { recursive: true });
+  const source = `./.data/transition-catalogue-${randomBytes(8).toString("hex")}.json`;
+  writeFileSync(source, JSON.stringify(catalogueFixture()));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     NODE_ENV: "development",
+    CATALOGUE_DEVELOPMENT_SOURCE: source,
     DATABASE_PATH: `./.data/test-import-transition-${randomBytes(8).toString("hex")}.sqlite`,
     BETTER_AUTH_URL: origin,
     BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
@@ -58,7 +64,7 @@ test("stored fictional imports cannot be read or mutated after development stora
       )
       .toBe(200);
     const originals = [];
-    for (const title of ["Multiple", "Unavailable", "Slow", "Queued"]) {
+    for (const title of ["Resolution", "Unavailable", "Slow", "Queued"]) {
       const sourceUrl = `https://en.wikivoyage.org/wiki/Fixture_${title}`;
       const response = await request.post("/api/imports", {
         headers: { Origin: origin },
@@ -75,6 +81,29 @@ test("stored fictional imports cannot be read or mutated after development stora
                 .status,
           )
           .not.toMatch(/^(queued|processing)$/);
+      if (title === "Resolution") {
+        const resolved = await request.post(
+          `/api/imports/${job.id}/resolution`,
+          { headers: { Origin: origin }, data: { action: "resolve" } },
+        );
+        expect(resolved.status()).toBe(200);
+        const mention = (await resolved.json()).job.mentions[0];
+        const confirmed = await request.post(
+          `/api/imports/${job.id}/resolution`,
+          {
+            headers: { Origin: origin },
+            data: {
+              action: "confirm",
+              mentionId: mention.id,
+              candidateId: "fictional-cafe-east",
+            },
+          },
+        );
+        expect(confirmed.status()).toBe(200);
+        expect(
+          (await (await request.get("/api/imports")).json()).resolvedPlaces,
+        ).toHaveLength(1);
+      }
       const before = (
         await (await request.get(`/api/imports/${job.id}`)).json()
       ).job;
@@ -101,7 +130,26 @@ test("stored fictional imports cannot be read or mutated after development stora
       )
       .toBe(200);
     expect((await (await request.get("/api/imports")).json()).jobs).toEqual([]);
+    expect(
+      (await (await request.get("/api/imports")).json()).resolvedPlaces,
+    ).toEqual([]);
     for (const job of originals) {
+      for (const data of [
+        { action: "resolve" },
+        {
+          action: "confirm",
+          mentionId: job.before.mentions[0]?.id ?? "unknown",
+          candidateId: "fictional-cafe-east",
+        },
+      ])
+        expect(
+          (
+            await request.post(`/api/imports/${job.id}/resolution`, {
+              headers: { Origin: origin },
+              data,
+            })
+          ).status(),
+        ).toBe(404);
       expect((await request.get(`/api/imports/${job.id}`)).status()).toBe(404);
       for (const action of ["retry", "cancel", "delete"])
         expect(
@@ -158,6 +206,9 @@ test("stored fictional imports cannot be read or mutated after development stora
       ).job;
       expect(restored).toEqual(original.before);
     }
+    expect(
+      (await (await request.get("/api/imports")).json()).resolvedPlaces,
+    ).toHaveLength(1);
   } finally {
     await stop(next);
     await stop(nginx);

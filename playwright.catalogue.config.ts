@@ -15,6 +15,7 @@ export default defineConfig({
     "discovery.spec.ts",
     "map-area.spec.ts",
     "import.spec.ts",
+    "resolution.spec.ts",
   ],
   workers: 1,
   fullyParallel: false,

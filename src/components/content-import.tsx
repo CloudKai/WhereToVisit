@@ -1,12 +1,15 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Import } from "@/shared/contracts";
+import type { Import, ResolvedImportPlace } from "@/shared/contracts";
 
 const active = (job: Import) =>
   job.status === "queued" || job.status === "processing";
 export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
   const [url, setUrl] = useState("");
   const [jobs, setJobs] = useState<Import[]>([]);
+  const [resolvedPlaces, setResolvedPlaces] = useState<ResolvedImportPlace[]>(
+    [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
@@ -23,6 +26,7 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
         throw new Error(value.error?.message ?? "Drafts could not be loaded.");
       if (current === generation.current) {
         setJobs(value.jobs);
+        setResolvedPlaces(value.resolvedPlaces ?? []);
         setFetchError(null);
         setReady(true);
       }
@@ -79,8 +83,9 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
       <p>
         Temporary drafts belong to this browser session and expire within 30
         days. Source text is deleted immediately after extraction. These names
-        are unresolved; matching, map pins, accounts and Trip saving are
-        unavailable.
+        can be compared with the bounded sourced shortlist. Every branch choice
+        requires your confirmation. Live provider lookup, exact map pins,
+        accounts and Trip saving remain unavailable.
       </p>
       {fixtureMode && (
         <p className="map-fixture-label">
@@ -116,6 +121,56 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
           </button>
         </div>
       )}
+      {resolvedPlaces.length > 0 && (
+        <section
+          aria-label="Confirmed temporary branches"
+          className="import-attribution"
+        >
+          <h2>Confirmed temporary branches</h2>
+          <p>
+            Selections from your retained drafts, combined by branch identity.
+            These are your choices; exact map pins and durable Trip saving
+            remain unavailable.
+          </p>
+          {resolvedPlaces.map((resolved) => (
+            <div key={`${resolved.dataKind}:${resolved.place.id}`}>
+              <h3>
+                {resolved.place.displayName} · {resolved.place.branch}
+              </h3>
+              <p>
+                {resolved.place.address}. City: {resolved.place.city}
+                {resolved.place.city !== "Shanghai"
+                  ? " — outside Shanghai discovery"
+                  : ""}
+                .
+              </p>
+              <p>
+                {resolved.importedEvidence.length} source mentions · Place
+                identity {resolved.place.id} ·{" "}
+                {resolved.dataKind === "fixture"
+                  ? "Fictional development draft"
+                  : "User-confirmed association"}
+                .
+              </p>
+              {resolved.importedEvidence.map((evidence) => (
+                <p key={`${evidence.importId}:${evidence.mentionId}`}>
+                  <a
+                    href={evidence.source.canonicalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Original source
+                  </a>{" "}
+                  · {evidence.source.attribution}. Original wording: “
+                  {evidence.extraction.quote}”. Your selection on{" "}
+                  {evidence.confirmation.confirmedAt}; independent verification:
+                  no.
+                </p>
+              ))}
+            </div>
+          ))}
+        </section>
+      )}
       <div aria-live="polite" aria-atomic="false">
         {!jobs.length && <p>No temporary imports in this browser session.</p>}
         {jobs.map((job) => (
@@ -131,7 +186,7 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                 : job.status === "processing"
                   ? "Processing — retrieving article and extracting listing names"
                   : job.status === "awaiting-confirmation"
-                    ? "Extracted names — location resolution unavailable"
+                    ? "Extracted names — review candidate branches"
                     : job.status === "unsupported"
                       ? "Unsupported import"
                       : job.status === "failed"
@@ -217,10 +272,98 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
             {job.mentions.map((mention) => (
               <section className="import-mention" key={mention.id}>
                 <h3>{mention.originalText}</h3>
-                <p>Unresolved mention</p>
+                <p>
+                  {mention.resolutionStatus === "user-confirmed"
+                    ? "User-confirmed branch"
+                    : "Unresolved mention"}
+                </p>
+                {mention.resolution && <p>{mention.resolution.message}</p>}
+                {mention.confirmation && (
+                  <p>
+                    Your selection is recorded separately from independent venue
+                    evidence. It does not verify operation, location coordinates
+                    or a provider pin.
+                  </p>
+                )}
+                {mention.candidates.map((candidate) => (
+                  <div className="import-candidate" key={candidate.id}>
+                    <h4>
+                      {candidate.place.displayName} ·{" "}
+                      {candidate.place.branch ?? "Branch"}
+                    </h4>
+                    {candidate.place.localName && (
+                      <p>{candidate.place.localName}</p>
+                    )}
+                    <p>{candidate.place.address}</p>
+                    <p>{candidate.reason}</p>
+                    <p>
+                      City: {candidate.place.city}.{" "}
+                      {candidate.outsideCity
+                        ? "Outside Shanghai discovery."
+                        : "Shanghai candidate."}
+                    </p>
+                    {candidate.branchEvidence.map((evidence) => (
+                      <p key={evidence.id}>
+                        <a
+                          href={evidence.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {evidence.attribution}
+                        </a>{" "}
+                        · Observed {evidence.capturedAt}. {evidence.limits}
+                      </p>
+                    ))}
+                    <p>
+                      {candidate.providerReference.provider}:{" "}
+                      {candidate.providerReference.qualificationNotes}
+                    </p>
+                    {candidate.providerReference.url && (
+                      <p>
+                        <a
+                          href={candidate.providerReference.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {candidate.providerReference.linkKind === "search"
+                            ? "Search this address in an external map"
+                            : "Inspect provider reference"}
+                        </a>
+                      </p>
+                    )}
+                    {!mention.confirmation && (
+                      <button
+                        type="button"
+                        disabled={busy || !ready}
+                        onClick={() =>
+                          void mutate(`/api/imports/${job.id}/resolution`, {
+                            action: "confirm",
+                            mentionId: mention.id,
+                            candidateId: candidate.id,
+                            ...(candidate.outsideCity
+                              ? { acknowledgeOutsideCity: true }
+                              : {}),
+                          })
+                        }
+                      >
+                        {candidate.outsideCity
+                          ? `Confirm ${candidate.place.branch ?? candidate.place.displayName} outside Shanghai`
+                          : `Confirm ${candidate.place.branch ?? candidate.place.displayName}`}
+                      </button>
+                    )}
+                    {mention.confirmation?.candidateId === candidate.id && (
+                      <p>
+                        Selected branch · Place identity {candidate.place.id}.
+                        Confirmed {mention.confirmation.confirmedAt}. Exact pins
+                        remain unavailable; the link is an address search.
+                      </p>
+                    )}
+                  </div>
+                ))}
                 <p>
                   Selected city: Shanghai (your import scope; not a source
-                  location fact). Branch and address unknown.
+                  location fact). The extracted listing itself supplies no
+                  branch or address.
                 </p>
                 <blockquote>{mention.extraction.quote}</blockquote>
                 <details>
@@ -239,6 +382,22 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
               </section>
             ))}
             <div className="import-actions">
+              {job.mentions.length > 0 &&
+                !active(job) &&
+                job.reason?.code !== "cancelled" &&
+                job.mentions.some((mention) => !mention.confirmation) && (
+                  <button
+                    type="button"
+                    disabled={busy || !ready}
+                    onClick={() =>
+                      void mutate(`/api/imports/${job.id}/resolution`, {
+                        action: "resolve",
+                      })
+                    }
+                  >
+                    Find candidate branches
+                  </button>
+                )}
               {active(job) && (
                 <button
                   type="button"

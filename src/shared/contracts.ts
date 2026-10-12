@@ -163,7 +163,20 @@ export type Mention = {
   id: string;
   originalText: string;
   nameHint: string;
-  resolutionStatus: "unresolved";
+  resolutionStatus: "unresolved" | "user-confirmed";
+  resolution?: {
+    outcome: "uncertain" | "no-match" | "provider-unavailable";
+    scope: "canonical-catalogue";
+    message: string;
+    policy: "canonical-names-v1";
+  };
+  confirmation?: {
+    candidateId: string;
+    confirmedAt: string;
+    method: "user-selection";
+    independentVerification: false;
+    outsideCityAcknowledged: boolean;
+  };
   cityHint: { value: string; origin: "selected-city" };
   branchHint: null;
   addressHint: null;
@@ -180,11 +193,7 @@ export type Mention = {
     codePointStart: number;
     codePointEnd: number;
   };
-  candidates: {
-    providerReference: ProviderReference;
-    branchEvidence: SourceEvidence[];
-    reason: string;
-  }[];
+  candidates: ResolutionCandidate[];
 };
 export type Trip = {
   id: string;
@@ -240,4 +249,27 @@ export type ImportSourceEvidence = {
   normalizedSourceHash: string;
   normalizationVersion: "verbatim-decoded-api-wikitext-v1";
   limits: string;
+};
+
+/** A source-backed canonical branch snapshot; outbound searches never establish a POI. */
+export type ResolutionCandidate = {
+  id: string;
+  place: Place;
+  providerReference: ProviderReference;
+  branchEvidence: SourceEvidence[];
+  reason: string;
+  outsideCity: boolean;
+};
+
+/** Session-owned temporary confirmations; editorial evidence remains on the canonical Place. */
+export type ResolvedImportPlace = {
+  place: Place;
+  dataKind: Import["dataKind"];
+  importedEvidence: {
+    importId: string;
+    mentionId: string;
+    source: ImportSourceEvidence;
+    extraction: Mention["extraction"];
+    confirmation: NonNullable<Mention["confirmation"]>;
+  }[];
 };
