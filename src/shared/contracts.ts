@@ -37,6 +37,7 @@ export type ProviderReference = {
   coordinates: Coordinates | null;
   verifiedAt: string;
   qualification: "qualified" | "conditional" | "unqualified";
+  qualificationNotes: string;
 };
 export type SourceEvidence = {
   id: string;
@@ -46,6 +47,17 @@ export type SourceEvidence = {
   attribution: string;
   permission: string;
   status: "historical" | "current" | "unverified";
+  establishedFacts: (
+    | "identity"
+    | "category"
+    | "neighbourhood"
+    | "operation"
+    | "price"
+    | "hours"
+    | "rating"
+    | "classification"
+  )[];
+  limits: string;
   recommendation: { summary: string; mentionedExperience: string } | null;
 };
 export type Place = {
@@ -59,6 +71,23 @@ export type Place = {
   neighbourhood: string | null;
   coordinates: Coordinates | null;
   price: { amount: number; currency: string; sourceEvidenceId: string } | null;
+  operationStatus: "current" | "closed" | "unknown";
+  hours: { description: string; sourceEvidenceId: string } | null;
+  rating: {
+    provider: string;
+    value: number;
+    scale: number;
+    count: number | null;
+    observedAt: string;
+    sourceEvidenceId: string;
+  } | null;
+  classifications: {
+    type: RecommendationType;
+    reason: string;
+    rule: string;
+    ruleDate: string;
+    sourceEvidenceIds: string[];
+  }[];
   evidence: SourceEvidence[];
   providerReferences: ProviderReference[];
 };
@@ -81,7 +110,21 @@ export type CatalogueQuery = {
   distance?: { origin: Coordinates; radiusMetres: number };
   recommendationType?: RecommendationType;
 };
-export type CatalogueResult = { places: Place[]; coverageMessage: string };
+export type CatalogueResult = {
+  places: Place[];
+  coverageMessage: string;
+  dataKind: "real" | "fixture";
+};
+/** A complete curated publication; source array order is the stable display order. */
+export type CatalogueBatch = {
+  version: 1;
+  kind: "real" | "fixture";
+  city: "Shanghai";
+  status: "published" | "unavailable";
+  coverageMessage: string;
+  unavailableReason: { code: string; message: string } | null;
+  places: Place[];
+};
 export type Import = {
   id: string;
   sourceUrl: string;

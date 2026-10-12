@@ -32,14 +32,14 @@ test("visitor can navigate discovery, import and trips", async ({
   }
 });
 
-test("visitor sees truthful unavailable discovery on phone and desktop", async ({
+test("visitor sees the bounded source-backed shortlist on phone and desktop", async ({
   page,
 }, testInfo) => {
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/discover");
     await expect(page.getByRole("status")).toContainText(
-      "The Shanghai shortlist is not available yet",
+      "Six source-backed Shanghai food and café branches",
     );
     await page.screenshot({
       path: testInfo.outputPath(`discover-${width}.png`),
@@ -59,15 +59,45 @@ test("visitor sees truthful unavailable discovery on phone and desktop", async (
   }
 });
 
-test("public catalogue never substitutes development examples for unavailable data", async ({
+test("public catalogue exposes six real branches without substituting development scenarios", async ({
   request,
 }) => {
   const response = await request.get("/api/catalogue");
-  expect(response.status()).toBe(503);
+  expect(response.status()).toBe(200);
   expect(response.headers().server).toMatch(/^nginx/);
   expect(await response.json()).toMatchObject({
-    status: "unavailable",
-    reason: "catalogue-not-ready",
+    status: "available",
+    data: { dataKind: "real" },
   });
+  const result = await response.json();
+  expect(result.data.places).toHaveLength(6);
+  expect(result.data.places.map((place: { id: string }) => place.id)).toEqual([
+    "roastery-shanghai",
+    "bluebottle-zhangyuan",
+    "bluebottle-westbund",
+    "jiajia-huanghe",
+    "lostheaven-bund",
+    "lostheaven-gaoyou",
+  ]);
+  for (const place of result.data.places) {
+    expect(place).toMatchObject({
+      coordinates: null,
+      price: null,
+      hours: null,
+      rating: null,
+      classifications: [],
+      operationStatus: "unknown",
+    });
+    expect(place.providerReferences[0]).toMatchObject({
+      linkKind: "search",
+      placeId: null,
+      coordinates: null,
+      returnedName: null,
+      returnedAddress: null,
+    });
+  }
+  expect(JSON.stringify(result)).not.toMatch(
+    /fictional-cafe|organiserUserId|savedPlaces/,
+  );
   expect((await request.get("/development")).status()).toBe(404);
 });

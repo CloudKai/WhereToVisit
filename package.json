@@ -22,7 +22,9 @@
     "nginx:check": "node scripts/nginx.mjs check",
     "nginx:serve": "node scripts/nginx.mjs serve",
     "nginx:stop": "node scripts/nginx.mjs stop",
-    "config:local": "node scripts/init-local.mjs"
+    "config:local": "node scripts/init-local.mjs",
+    "catalogue:load": "node --import tsx ./src/server/catalogue-load.ts",
+    "test:catalogue": "playwright test --config playwright.catalogue.config.ts"
   },
   "dependencies": {
     "next": "16.4.0",

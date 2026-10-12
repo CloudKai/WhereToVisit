@@ -332,3 +332,30 @@ footer {
     font-size: 18px;
   }
 }
+
+.catalogue-place {
+  border-top: 1px solid var(--line);
+  padding-block: 24px;
+  overflow-wrap: anywhere;
+}
+.catalogue-place h2 {
+  font-size: 26px;
+  margin: 0 0 12px;
+}
+.catalogue-place p {
+  margin-block: 8px;
+}
+.catalogue-place ul {
+  padding-left: 22px;
+}
+.catalogue-place li {
+  margin-block: 18px;
+}
+.catalogue-place a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.fixture-notice {
+  padding: 16px;
+  background: var(--accent);
+}
