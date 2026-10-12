@@ -58,6 +58,8 @@ export async function developmentArticle(
   if (title === "Fixture Resolution" || title === "Fixture ResolutionSecond")
     wikitext =
       "== Eat ==\n{{eat|name=Fictional Scenario Café}}\n{{eat|name=Unknown Fictional Dumplings}}";
+  if (title === "Fixture ShortNames")
+    wikitext = "== Drink ==\n{{drink|name=茶}}\n{{drink|name=Tea}}";
   if (title === "Fixture LocalChain")
     wikitext = "== Drink ==\n{{drink|name=蓝瓶咖啡}}";
   if (title === "Fixture Canonical")

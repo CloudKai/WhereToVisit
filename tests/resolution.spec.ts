@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { type APIRequestContext, expect, test } from "@playwright/test";
 import type { Import } from "../src/shared/contracts";
+import { catalogueFixture } from "./catalogue-fixture";
 
 const origin = "http://127.0.0.1:8180";
 async function imported(request: APIRequestContext, title = "Resolution") {
@@ -328,4 +329,41 @@ test("unavailable resolution is explicit and retry retains confirmed identity wh
       })
     ).status(),
   ).toBe(404);
+});
+
+test("exact short canonical names yield evidenced candidates without expanding short chain prefixes", async ({
+  request,
+}) => {
+  const path = ".data/catalogue-scenario.json";
+  const before = readFileSync(path, "utf8");
+  const batch = catalogueFixture();
+  batch.places[0].displayName = "Tea";
+  batch.places[0].localName = "茶";
+  batch.places[1].displayName = "Tea House";
+  batch.places[1].localName = "茶（西店）";
+  try {
+    writeFileSync(path, JSON.stringify(batch));
+    const job = await resolve(request, await imported(request, "ShortNames"));
+    expect(job.mentions.map((mention) => mention.originalText)).toEqual([
+      "茶",
+      "Tea",
+    ]);
+    for (const mention of job.mentions) {
+      expect(mention.candidates.map((candidate) => candidate.id)).toEqual([
+        "fictional-cafe-east",
+      ]);
+      expect(mention.candidates[0]).toMatchObject({
+        place: {
+          localName: "茶",
+          displayName: "Tea",
+          address: "1 Fictional East Road, Shanghai",
+        },
+        providerReference: { qualification: "qualified" },
+      });
+      expect(mention.placeId).toBeNull();
+      expect(mention.resolution?.outcome).toBe("uncertain");
+    }
+  } finally {
+    writeFileSync(path, before);
+  }
 });

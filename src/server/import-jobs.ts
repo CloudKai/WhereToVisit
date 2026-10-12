@@ -591,16 +591,16 @@ export async function resolveImport(
                 (value): value is string => !!value,
               );
               // A generic chain prefix retrieves separate branches; it never merges them.
-              return (
-                name.length >= 4 &&
-                names.some(
-                  (value) =>
-                    normalize(value) === name ||
-                    normalize(value).startsWith(`${name} `) ||
-                    normalize(value).startsWith(`${name}(`) ||
-                    normalize(value).startsWith(`${name} (`),
-                )
-              );
+              return names.some((value) => {
+                const canonicalName = normalize(value);
+                return (
+                  canonicalName === name ||
+                  (name.length >= 4 &&
+                    (canonicalName.startsWith(`${name} `) ||
+                      canonicalName.startsWith(`${name}(`) ||
+                      canonicalName.startsWith(`${name} (`)))
+                );
+              });
             })
             .flatMap((place) => {
               const reference = place.providerReferences.find(
