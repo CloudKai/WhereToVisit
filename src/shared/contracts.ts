@@ -237,11 +237,39 @@ export type DayPlanDraftState = {
   selectionRevision: number;
   needsReview: boolean;
 };
+export type GeneratedDayPlanState = {
+  plan: DayPlan | null;
+  needsReview: boolean;
+};
 export type DayPlan = {
   id: string;
   revision: number;
   request: DayPlanRequest;
-  stops: { placeId: string; visitTimeAssumption: string | null }[];
+  requestRevision: number;
+  selectionRevision: number;
+  createdAt: string;
+  updatedAt: string;
+  dataKind: "real" | "fixture";
+  operatingHours: {
+    placeId: string;
+    visitDate: string;
+    timeZone: "Asia/Shanghai";
+    provider: string;
+    retrievedAt: string;
+    closed: boolean;
+    opensMinute: number;
+    closesMinute: number;
+    sourceExplanation: string;
+  }[];
+  assumptions: string[];
+  explanation: string;
+  stops: {
+    placeId: string;
+    visitTimeAssumption: string | null;
+    arrivalMinute: number | null;
+    departureMinute: number | null;
+    hoursEvidence: string | null;
+  }[];
   travelLegs: {
     fromPlaceId: string;
     toPlaceId: string;
@@ -253,6 +281,9 @@ export type DayPlan = {
     durationSeconds: number | null;
     distanceMetres: number | null;
     outcome: string;
+    apiVersion: string | null;
+    coordinateProvenance: string | null;
+    visitTimeContext: string;
   }[];
   warnings: string[];
   unscheduledPlaces: { placeId: string; reason: string }[];
@@ -333,6 +364,7 @@ export type SharedGuestTrip = {
     "id" | "title" | "city" | "dataKind" | "selectedPlaceIds" | "dayPlanIds"
   > & {
     dayPlan: DayPlanDraftState;
+    generatedDayPlan: GeneratedDayPlanState;
     savedPlaces: {
       placeId: string;
       place: Place;

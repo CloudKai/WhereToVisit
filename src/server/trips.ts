@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { Trip } from "@/shared/contracts";
 import { openDatabase } from "./db/connection";
+import { projectedDayPlanIds } from "./generated-day-plan-state";
 import { visibleTripDataKind } from "./trip-policy";
 export class TripFailure extends Error {
   constructor(
@@ -48,7 +49,8 @@ export function listTrips(userId: string) {
         .all(userId) as { document: string }[]
     )
       .map((row) => JSON.parse(row.document) as Trip)
-      .filter(visibleTrip),
+      .filter(visibleTrip)
+      .map((trip) => ({ ...trip, dayPlanIds: projectedDayPlanIds(db, trip) })),
   );
 }
 export function getTrip(userId: string, id: string) {
@@ -57,7 +59,9 @@ export function getTrip(userId: string, id: string) {
       .prepare("SELECT document FROM trips WHERE id=? AND organiser_user_id=?")
       .get(id, userId) as { document: string } | undefined;
     const trip = row ? (JSON.parse(row.document) as Trip) : null;
-    return trip && visibleTrip(trip) ? trip : null;
+    return trip && visibleTrip(trip)
+      ? { ...trip, dayPlanIds: projectedDayPlanIds(db, trip) }
+      : null;
   });
 }
 export function createTrip(userId: string, title: unknown, city: unknown) {
@@ -91,7 +95,7 @@ export function createTrip(userId: string, title: unknown, city: unknown) {
       db.prepare(
         "INSERT INTO trips(id,organiser_user_id,document) VALUES(?,?,?)",
       ).run(trip.id, userId, JSON.stringify(trip));
-      return trip;
+      return { ...trip, dayPlanIds: projectedDayPlanIds(db, trip) };
     })(),
   );
 }
@@ -130,7 +134,7 @@ export function changeTrip(
       db.prepare(
         "UPDATE trips SET document=? WHERE id=? AND organiser_user_id=?",
       ).run(JSON.stringify(trip), id, userId);
-      return trip;
+      return { ...trip, dayPlanIds: projectedDayPlanIds(db, trip) };
     })(),
   );
 }

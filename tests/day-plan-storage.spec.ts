@@ -140,6 +140,25 @@ test("retained fixture day drafts and receipts stay inaccessible in production a
         })
       ).status(),
     ).toBe(200);
+    const generationPayload = {
+      operationId: randomUUID(),
+      expectedRevision: 0,
+      requestRevision: 1,
+      selectionRevision: state.selectionRevision,
+    };
+    expect(
+      (
+        await request.post(`/api/trips/${trip.id}/generated-day-plan`, {
+          headers,
+          data: generationPayload,
+        })
+      ).status(),
+    ).toBe(200);
+    const generatedBefore = (
+      await (
+        await request.get(`/api/trips/${trip.id}/generated-day-plan`)
+      ).json()
+    ).generatedDayPlan;
     const before = (
       await (await request.get(`/api/trips/${trip.id}/day-plan`)).json()
     ).dayPlan;
@@ -183,6 +202,19 @@ test("retained fixture day drafts and receipts stay inaccessible in production a
       await ready();
       for (const response of [
         await request.get(`/api/trips/${trip.id}/day-plan`),
+        await request.get(`/api/trips/${trip.id}/generated-day-plan`),
+        await request.post(`/api/trips/${trip.id}/generated-day-plan`, {
+          headers,
+          data: generationPayload,
+        }),
+        await request.post(`/api/trips/${trip.id}/generated-day-plan`, {
+          headers,
+          data: {
+            ...generationPayload,
+            operationId: randomUUID(),
+            expectedRevision: 1,
+          },
+        }),
         await request.post(`/api/trips/${trip.id}/day-plan`, {
           headers,
           data: payload,
@@ -232,6 +264,28 @@ test("retained fixture day drafts and receipts stay inaccessible in production a
       (await (await request.get(`/api/trips/${trip.id}/day-plan`)).json())
         .dayPlan,
     ).toEqual(before);
+    expect(
+      (
+        await (
+          await request.get(`/api/trips/${trip.id}/generated-day-plan`)
+        ).json()
+      ).generatedDayPlan,
+    ).toEqual(generatedBefore);
+    expect(
+      (
+        await request.post(`/api/trips/${trip.id}/generated-day-plan`, {
+          headers,
+          data: generationPayload,
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await (
+          await request.get(`/api/trips/${trip.id}/generated-day-plan`)
+        ).json()
+      ).generatedDayPlan,
+    ).toEqual(generatedBefore);
     expect(
       (await (await guest.get(`/api/guest-trips/${trip.id}`)).json()).shared,
     ).toEqual(sharedBefore);

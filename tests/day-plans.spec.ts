@@ -82,7 +82,7 @@ test("stale browser draft reload reviews the current chosen stops before another
   await select(page.request, trip.id, false);
   await panel.getByRole("button", { name: "Save one-day draft" }).click();
   await expect(panel.getByRole("alert")).toContainText("chosen Places changed");
-  await panel.getByRole("button", { name: "Reload day draft" }).click();
+  await panel.getByRole("button", { name: "Reload day request" }).click();
   await expect(
     page.getByRole("region", { name: "Saved shortlist" }).getByRole("checkbox"),
   ).not.toBeChecked();
@@ -402,13 +402,13 @@ test("failed durable writes and lost responses preserve captured draft retry", a
     lock.exec("BEGIN IMMEDIATE");
     await panel.getByRole("button", { name: "Save one-day draft" }).click();
     await expect(panel.getByRole("alert")).toContainText(
-      "No new draft is confirmed saved",
+      "No new change is confirmed saved",
       { timeout: 15_000 },
     );
     expect((await read(page.request, trip.id)).draft).toBeNull();
     lock.exec("ROLLBACK");
     await panel.getByLabel("Visit date (Shanghai)").fill("2026-11-13");
-    await panel.getByRole("button", { name: "Retry day draft" }).click();
+    await panel.getByRole("button", { name: "Retry day request" }).click();
     await expect(panel).toContainText("One-day draft saved");
     expect((await read(page.request, trip.id)).draft.request.visitDate).toBe(
       "2026-11-12",
@@ -429,7 +429,7 @@ test("failed durable writes and lost responses preserve captured draft retry", a
     const committed = await read(page.request, trip.id);
     expect(committed.draft.revision).toBe(2);
     await page.unroute("**/api/trips/*/day-plan");
-    await panel.getByRole("button", { name: "Retry day draft" }).click();
+    await panel.getByRole("button", { name: "Retry day request" }).click();
     await expect(panel).toContainText("One-day draft saved");
     expect(await read(page.request, trip.id)).toEqual(committed);
   } finally {

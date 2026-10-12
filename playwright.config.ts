@@ -7,6 +7,7 @@ export default defineConfig({
     "trips-production.spec.ts",
     "invitations-production.spec.ts",
     "day-plans-production.spec.ts",
+    "day-generation-production.spec.ts",
   ],
   fullyParallel: false,
   workers: 1,
@@ -23,6 +24,8 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         ENABLE_DEVELOPMENT_FIXTURES: "1",
+        ENABLE_DEVELOPMENT_DAY_PLAN_FIXTURE: "1",
+        DAY_PLAN_DEVELOPMENT_SOURCE: "./.data/day-planning-scenario.json",
         ENABLE_DEVELOPMENT_MAP_FIXTURE: "1",
         ENABLE_DEVELOPMENT_IMPORT_FIXTURE: "1",
         ENABLE_DEVELOPMENT_TRIP_FIXTURE: "1",

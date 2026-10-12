@@ -366,8 +366,9 @@ export function TripDashboard({
                       for a day plan
                     </label>
                     <p>
-                      Selection is separate from saving. Day-plan generation is
-                      not available yet.
+                      Selection is separate from saving. Save one-day inputs
+                      below to generate a grounded order; real timings remain
+                      unresolved.
                     </p>
                     <button
                       type="button"

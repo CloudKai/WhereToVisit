@@ -334,7 +334,11 @@ export function GuestTrip({
           <button type="button" disabled={busy} onClick={() => void run(load)}>
             Refresh shared Trip
           </button>
-          <SharedDayPlan state={shared.trip.dayPlan} />
+          <SharedDayPlan
+            state={shared.trip.dayPlan}
+            generated={shared.trip.generatedDayPlan}
+            places={shared.trip.savedPlaces.map((member) => member.place)}
+          />
           <ParticipantList participants={shared.participants} />
           <CollaborationPanel
             key={`${shared.trip.id}:${shared.trip.dataKind}`}

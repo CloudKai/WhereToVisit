@@ -3,9 +3,20 @@ import { useEffect, useRef, useState } from "react";
 import type {
   DayPlanDraftState,
   DayPlanRequest,
+  GeneratedDayPlanState,
+  Place,
   Trip,
 } from "@/shared/contracts";
-export function SharedDayPlan({ state }: { state: DayPlanDraftState }) {
+import { GeneratedDayPlan } from "./generated-day-plan";
+export function SharedDayPlan({
+  state,
+  generated,
+  places,
+}: {
+  state: DayPlanDraftState;
+  generated: GeneratedDayPlanState;
+  places: Place[];
+}) {
   const draft = state.draft;
   return (
     <section aria-label="Shared day-plan context" className="import-job">
@@ -37,8 +48,9 @@ export function SharedDayPlan({ state }: { state: DayPlanDraftState }) {
       )}
       <p>
         Guests can read this context. Only the organiser can change chosen stops
-        or inputs. No schedule or travel timings have been generated.
+        or inputs or generate the itinerary.
       </p>
+      <GeneratedDayPlan state={generated} places={places} />
     </section>
   );
 }
@@ -59,6 +71,10 @@ export function DayPlanInputs({
   onDenied: () => void;
   onTripReload: () => Promise<void>;
 }) {
+  const [generated, setGenerated] = useState<GeneratedDayPlanState>({
+    plan: null,
+    needsReview: false,
+  });
   const [state, setState] = useState<DayPlanDraftState | null>(null);
   const [visitDate, setVisitDate] = useState("");
   const [startArea, setStartArea] = useState("");
@@ -110,7 +126,7 @@ export function DayPlanInputs({
       if (failure instanceof DraftFailure && failure.status !== 503)
         retry.current = null;
       setError(
-        `${failure instanceof Error ? failure.message : "The draft request failed."} No new draft is confirmed saved.`,
+        `${failure instanceof Error ? failure.message : "The draft request failed."} No new change is confirmed saved.`,
       );
     } finally {
       setBusy(false);
@@ -126,11 +142,21 @@ export function DayPlanInputs({
   }
   async function load(replaceFields: boolean) {
     const value = await request();
-    setState(value);
     if (replaceFields || !initialized.current) {
       applyRequest(value.draft?.request);
       initialized.current = true;
     }
+    setState(value);
+    const response = await fetch(`/api/trips/${trip.id}/generated-day-plan`, {
+      cache: "no-store",
+    });
+    const result = await response.json();
+    if (!response.ok)
+      throw new DraftFailure(
+        result.error?.message ?? "Plan unavailable.",
+        response.status,
+      );
+    setGenerated(result.generatedDayPlan);
   }
   // biome-ignore lint/correctness/useExhaustiveDependencies: the parent keys this view to Trip/data kind; selection changes refresh its revision without discarding edited preferences.
   useEffect(() => {
@@ -150,18 +176,20 @@ export function DayPlanInputs({
         Deselect any branch you do not want to plan.
       </p>
       <p>
-        Exact maps and routes remain unavailable. No schedule or travel timings
-        have been generated.
+        Exact maps and real routes remain unavailable.{" "}
+        {generated.plan
+          ? "Review the saved ordering, unresolved timing and warnings below."
+          : "No schedule or travel timings have been generated."}
       </p>
       <p>
         Optional preferences can all be unset. Saved inputs are shared with
         invited guests. Dietary text records your preference; venue suitability
         and allergy safety are unknown.
       </p>
-      {busy && <p role="status">Waiting for day draft confirmation…</p>}
+      {busy && <p role="status">Waiting for day request confirmation…</p>}
       {notice && <p role="status">{notice}</p>}
       {error && (
-        <div role="alert" aria-label="Day draft request failed">
+        <div role="alert" aria-label="Day plan request failed">
           <p>{error}</p>
           {retry.current && (
             <button
@@ -171,7 +199,7 @@ export function DayPlanInputs({
                 if (retry.current) void run(retry.current);
               }}
             >
-              Retry day draft
+              Retry day request
             </button>
           )}
           <button
@@ -184,7 +212,7 @@ export function DayPlanInputs({
               })
             }
           >
-            Reload day draft
+            Reload day request
           </button>
         </div>
       )}
@@ -213,10 +241,16 @@ export function DayPlanInputs({
               const value = await request(input);
               setState(value);
               applyRequest(value.draft?.request);
+              const response = await fetch(
+                `/api/trips/${trip.id}/generated-day-plan`,
+                { cache: "no-store" },
+              );
+              if (response.ok)
+                setGenerated((await response.json()).generatedDayPlan);
               setNotice(
                 value.needsReview
                   ? "The previous save was confirmed, but chosen Places now need review."
-                  : "One-day draft saved. Generation is not available yet.",
+                  : "One-day draft saved. Review before generating a plan.",
               );
             });
           }}
@@ -281,6 +315,47 @@ export function DayPlanInputs({
           </button>
         </form>
       )}
+      {state?.draft && (
+        <button
+          type="button"
+          disabled={busy || state.needsReview}
+          onClick={() => {
+            const input = {
+              operationId: crypto.randomUUID(),
+              expectedRevision: generated.plan?.revision ?? 0,
+              requestRevision: state.draft?.revision,
+              selectionRevision: state.selectionRevision,
+            };
+            void run(async () => {
+              const response = await fetch(
+                `/api/trips/${trip.id}/generated-day-plan`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(input),
+                  cache: "no-store",
+                },
+              );
+              const result = await response.json();
+              if (!response.ok)
+                throw new DraftFailure(
+                  result.error?.message ?? "Generation unavailable.",
+                  response.status,
+                );
+              setGenerated(result.generatedDayPlan);
+              setNotice(
+                "Day plan confirmed saved. Review warnings before visiting.",
+              );
+            });
+          }}
+        >
+          Generate day plan
+        </button>
+      )}
+      <GeneratedDayPlan
+        state={generated}
+        places={trip.savedPlaces.map((member) => member.place)}
+      />
     </section>
   );
 }

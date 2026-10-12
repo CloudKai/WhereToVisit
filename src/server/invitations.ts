@@ -10,6 +10,10 @@ import type {
 import { getAuthConfiguration } from "./config";
 import { dayPlanState } from "./day-plan-state";
 import { openDatabase } from "./db/connection";
+import {
+  generatedDayPlanState,
+  projectedDayPlanIds,
+} from "./generated-day-plan-state";
 import { TripFailure, visibleTrip } from "./trips";
 
 type Database = ReturnType<typeof openDatabase>["sqlite"];
@@ -199,8 +203,9 @@ function shared(
       city: trip.city,
       dataKind: trip.dataKind,
       selectedPlaceIds: trip.selectedPlaceIds,
-      dayPlanIds: trip.dayPlanIds,
+      dayPlanIds: projectedDayPlanIds(db, trip),
       dayPlan: dayPlanState(db, trip),
+      generatedDayPlan: generatedDayPlanState(db, trip),
       savedPlaces: trip.savedPlaces.map((member) => ({
         placeId: member.placeId,
         place: member.place,

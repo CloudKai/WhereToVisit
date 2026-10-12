@@ -74,3 +74,11 @@ export const dayPlanRequests = sqliteTable("day_plan_requests", {
     .references(() => trips.id, { onDelete: "cascade" }),
   document: text("document").notNull(),
 });
+
+export const generatedDayPlans = sqliteTable("generated_day_plans", {
+  id: text("id").primaryKey(),
+  tripId: text("trip_id")
+    .notNull()
+    .references(() => trips.id, { onDelete: "cascade" }),
+  document: text("document").notNull(),
+});

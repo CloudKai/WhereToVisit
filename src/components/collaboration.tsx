@@ -143,7 +143,8 @@ export function CollaborationPanel({
       <h3>Choose together</h3>
       <p>
         Preferences inform the organiser’s final selection. Must go is a
-        preference, not a guarantee. Generated schedules are not available yet.
+        preference, not a guarantee. The organiser generates the day plan from
+        chosen Places; real timing and feasibility remain unresolved.
       </p>
       {busy && <p role="status">Waiting for collaboration confirmation…</p>}
       {notice && <p role="status">{notice}</p>}

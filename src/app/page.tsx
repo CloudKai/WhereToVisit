@@ -45,7 +45,8 @@ export default function Home() {
           <h2>Make it your day.</h2>
           <p>
             Keep a private Shanghai shortlist with the sources that inspired
-            you. Choose which saved places to consider for a future day plan.
+            you. Choose confirmed branches and generate a day order, with real
+            timing marked unresolved.
           </p>
           <span className="card-link">Explore trips ↗</span>
         </Link>
