@@ -146,3 +146,27 @@ test("public catalogue exposes six real branches without substituting developmen
     ).toEqual([]);
   }
 });
+
+test("production ignores import fixture injection and exposes no invented result", async ({
+  request,
+}) => {
+  const created = await request.post("/api/imports", {
+    headers: { Origin: "http://127.0.0.1:8180" },
+    data: { sourceUrl: "https://en.wikivoyage.org/wiki/Fixture_Multiple" },
+  });
+  expect(created.status()).toBe(202);
+  const id = (await created.json()).job.id;
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get(`/api/imports/${id}`)).json()).job.status,
+    )
+    .toBe("unsupported");
+  const job = (await (await request.get(`/api/imports/${id}`)).json()).job;
+  expect(job).toMatchObject({
+    dataKind: "real",
+    reason: { code: "credentials-missing" },
+    mentions: [],
+    evidence: null,
+  });
+});

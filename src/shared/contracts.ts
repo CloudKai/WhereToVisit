@@ -138,6 +138,7 @@ export type CatalogueBatch = {
 };
 export type Import = {
   id: string;
+  dataKind: "real" | "fixture";
   sourceUrl: string;
   city: string;
   owner: Actor;
@@ -152,10 +153,20 @@ export type Import = {
     | "failed";
   reason: { code: string; message: string; retryable: boolean } | null;
   mentions: Mention[];
+  attempt: number;
+  expiresAt: string;
+  partial: boolean;
+  sourceReplayAvailable: boolean;
+  evidence: ImportSourceEvidence | null;
 };
 export type Mention = {
   id: string;
   originalText: string;
+  nameHint: string;
+  resolutionStatus: "unresolved";
+  cityHint: { value: string; origin: "selected-city" };
+  branchHint: null;
+  addressHint: null;
   placeId: string | null;
   sourceEvidenceId: string;
   extraction: {
@@ -164,6 +175,7 @@ export type Mention = {
     canonicalUrl: string;
     revision: string | null;
     normalizedSourceHash: string;
+    normalizationVersion: "verbatim-decoded-api-wikitext-v1";
     quote: string;
     codePointStart: number;
     codePointEnd: number;
@@ -211,4 +223,21 @@ export type DayPlan = {
   }[];
   warnings: string[];
   unscheduledPlaces: { placeId: string; reason: string }[];
+};
+
+export type ImportSourceEvidence = {
+  id: string;
+  sourceUrl: string;
+  canonicalUrl: string;
+  revision: string;
+  revisionUrl: string | null;
+  historyUrl: string | null;
+  capturedAt: string;
+  attribution: string;
+  license: "CC BY-SA 4.0";
+  licenseUrl: string;
+  changes: string;
+  normalizedSourceHash: string;
+  normalizationVersion: "verbatim-decoded-api-wikitext-v1";
+  limits: string;
 };

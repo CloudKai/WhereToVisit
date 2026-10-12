@@ -19,9 +19,12 @@ export default defineConfig({
       env: {
         ENABLE_DEVELOPMENT_FIXTURES: "1",
         ENABLE_DEVELOPMENT_MAP_FIXTURE: "1",
+        ENABLE_DEVELOPMENT_IMPORT_FIXTURE: "1",
+        IMPORTS_ENABLED: "1",
+        WIKIMEDIA_OPERATOR_CONTACT: "",
         CATALOGUE_DEVELOPMENT_SOURCE: "./.data/catalogue-scenario.json",
         BETTER_AUTH_URL: "http://127.0.0.1:8180",
-        DATABASE_PATH: "./.data/test-shell.sqlite",
+        DATABASE_PATH: `./.data/test-shell-${randomBytes(8).toString("hex")}.sqlite`,
         BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
       },
     },

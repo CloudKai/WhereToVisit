@@ -15,6 +15,13 @@
       "when": 1791773528848,
       "tag": "0001_catalogue_publication",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791798358383,
+      "tag": "0002_import_jobs",
+      "breakpoints": true
     }
   ]
 }

@@ -485,3 +485,47 @@ fieldset.map-controls {
   padding: 0;
   min-inline-size: 0;
 }
+
+.import-workflow {
+  max-width: 58rem;
+}
+.import-workflow form {
+  display: grid;
+  gap: 0.75rem;
+  margin-block: 1.5rem;
+}
+.import-workflow input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid #b9bcb4;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+.import-job {
+  margin-block: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #d4d8cf;
+  border-radius: 0.75rem;
+}
+.import-source {
+  overflow-wrap: anywhere;
+}
+.import-mention {
+  margin-block: 1rem;
+  padding: 1rem;
+  background: #f4f5ef;
+  border-radius: 0.5rem;
+}
+.import-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.import-workflow button {
+  cursor: pointer;
+  padding: 0.65rem 0.9rem;
+}
+.import-attribution a {
+  text-underline-offset: 0.2em;
+}

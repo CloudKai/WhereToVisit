@@ -10,7 +10,12 @@ writeFileSync(
 );
 export default defineConfig({
   testDir: "./tests",
-  testMatch: ["catalogue.spec.ts", "discovery.spec.ts", "map-area.spec.ts"],
+  testMatch: [
+    "catalogue.spec.ts",
+    "discovery.spec.ts",
+    "map-area.spec.ts",
+    "import.spec.ts",
+  ],
   workers: 1,
   fullyParallel: false,
   use: {
@@ -25,7 +30,9 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         ENABLE_DEVELOPMENT_MAP_FIXTURE: "1",
-        DATABASE_PATH: "./.data/test-catalogue.sqlite",
+        ENABLE_DEVELOPMENT_IMPORT_FIXTURE: "1",
+        IMPORTS_ENABLED: "1",
+        DATABASE_PATH: `./.data/test-catalogue-${randomBytes(8).toString("hex")}.sqlite`,
         CATALOGUE_DEVELOPMENT_SOURCE: "./.data/catalogue-scenario.json",
         BETTER_AUTH_URL: "http://127.0.0.1:8180",
         BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
