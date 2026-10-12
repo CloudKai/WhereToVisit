@@ -342,15 +342,16 @@ export function TripDashboard({
                       type="checkbox"
                       disabled={busy}
                       checked={trip.selectedPlaceIds.includes(member.placeId)}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const selected = event.target.checked;
                         void run(() =>
                           mutate({
                             action: "select",
                             placeId: member.placeId,
-                            selected: event.target.checked,
+                            selected,
                           }),
-                        )
-                      }
+                        );
+                      }}
                     />
                     Select {member.place.branch ?? member.place.displayName} for
                     a day plan

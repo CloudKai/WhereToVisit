@@ -4,33 +4,54 @@ import type { TripSaveIntent } from "@/shared/contracts";
 import { queryCatalogue } from "./catalogue";
 import { openDatabase } from "./db/connection";
 import { getImport, listImports, resolvedImportPlaces } from "./import-jobs";
+import { visibleTripDataKind } from "./trip-policy";
 import { TripFailure } from "./trips";
 
 function claimSources(
   db: ReturnType<typeof openDatabase>["sqlite"],
   session: string,
   userId: string,
-  intent: Pick<TripSaveIntent, "importedEvidence">,
+  intent: Pick<TripSaveIntent, "importedEvidence" | "requestedImportId">,
 ) {
   db.prepare("DELETE FROM imported_source_claims WHERE expires_at<=?").run(
     new Date().toISOString(),
   );
-  for (const evidence of intent.importedEvidence) {
-    const id = `${session}:${evidence.importId}`;
+  if (intent.importedEvidence.length && !intent.requestedImportId)
+    throw new TripFailure(
+      "not-found",
+      "This pending source save needs a fresh review. Start a new save.",
+      404,
+    );
+  const eligibleEvidence = intent.importedEvidence.filter((evidence) => {
     const row = db
       .prepare(
         "SELECT organiser_user_id FROM imported_source_claims WHERE id=?",
       )
-      .get(id) as { organiser_user_id: string } | undefined;
-    if (row && row.organiser_user_id !== userId)
-      throw new TripFailure(
-        "not-found",
-        "This source was already reviewed by another organiser. Start a new import for this account.",
-        404,
-      );
+      .get(`${session}:${evidence.importId}`) as
+      | { organiser_user_id: string }
+      | undefined;
+    return !row || row.organiser_user_id === userId;
+  });
+  if (
+    intent.requestedImportId &&
+    !eligibleEvidence.some(
+      (evidence) => evidence.importId === intent.requestedImportId,
+    )
+  )
+    throw new TripFailure(
+      "not-found",
+      "This source was already reviewed by another organiser. Start a new import for this account.",
+      404,
+    );
+  intent.importedEvidence = eligibleEvidence;
+  for (const evidence of eligibleEvidence) {
     db.prepare(
       "INSERT OR IGNORE INTO imported_source_claims(id,organiser_user_id,expires_at) VALUES(?,?,?)",
-    ).run(id, userId, new Date(Date.now() + 30 * 86400_000).toISOString());
+    ).run(
+      `${session}:${evidence.importId}`,
+      userId,
+      new Date(Date.now() + 30 * 86400_000).toISOString(),
+    );
   }
 }
 export async function prepareSave(
@@ -47,21 +68,23 @@ export async function prepareSave(
   let saved: Pick<TripSaveIntent, "place" | "dataKind" | "importedEvidence">;
   if (typeof importId === "string") {
     const job = getImport(session, importId);
-    const resolved =
-      job &&
-      resolvedImportPlaces([job]).some((item) => item.place.id === placeId)
-        ? resolvedImportPlaces(listImports(session)).find(
-            (item) =>
-              item.place.id === placeId && item.dataKind === job.dataKind,
-          )
-        : null;
-    if (!resolved)
+    const requested = job
+      ? resolvedImportPlaces([job]).find((item) => item.place.id === placeId)
+      : null;
+    if (!requested)
       throw new TripFailure(
         "not-found",
         "Confirmed branch not found in your retained draft.",
         404,
       );
-    saved = resolved;
+    const aggregate = resolvedImportPlaces(listImports(session)).find(
+      (item) => item.place.id === placeId && item.dataKind === job?.dataKind,
+    );
+    saved = {
+      ...requested,
+      importedEvidence:
+        aggregate?.importedEvidence ?? requested.importedEvidence,
+    };
   } else {
     const catalogue = await queryCatalogue({ city: "Shanghai" });
     if (catalogue.status !== "available")
@@ -75,13 +98,7 @@ export async function prepareSave(
       throw new TripFailure("not-found", "Canonical branch not found.", 404);
     saved = { place, dataKind: catalogue.data.dataKind, importedEvidence: [] };
   }
-  if (
-    saved.dataKind === "fixture" &&
-    !(
-      process.env.NODE_ENV === "development" &&
-      process.env.ENABLE_DEVELOPMENT_TRIP_FIXTURE === "1"
-    )
-  )
+  if (!visibleTripDataKind(saved.dataKind))
     throw new TripFailure(
       "fixture-disabled",
       "Fictional Trip saving is not enabled.",
@@ -94,6 +111,7 @@ export async function prepareSave(
     );
   const intent: TripSaveIntent = {
     id: randomUUID(),
+    requestedImportId: typeof importId === "string" ? importId : null,
     organiserUserId: userId,
     expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
     ...saved,
@@ -153,13 +171,8 @@ export function readSaveIntent(session: string, userId: string, id: string) {
           404,
         );
       const intent: TripSaveIntent = JSON.parse(row.document);
-      if (
-        intent.dataKind === "fixture" &&
-        !(
-          process.env.NODE_ENV === "development" &&
-          process.env.ENABLE_DEVELOPMENT_TRIP_FIXTURE === "1"
-        )
-      )
+      intent.requestedImportId ??= null;
+      if (!visibleTripDataKind(intent.dataKind))
         throw new TripFailure("not-found", "Pending save not found.", 404);
       claimSources(sqlite, session, userId, intent);
       intent.organiserUserId = userId;

@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { Trip } from "@/shared/contracts";
 import { openDatabase } from "./db/connection";
+import { visibleTripDataKind } from "./trip-policy";
 export class TripFailure extends Error {
   constructor(
     public code: string,
@@ -22,11 +23,7 @@ function withDatabase<T>(
   }
 }
 export function visibleTrip(trip: Trip) {
-  return (
-    trip.dataKind !== "fixture" ||
-    (process.env.NODE_ENV === "development" &&
-      process.env.ENABLE_DEVELOPMENT_TRIP_FIXTURE === "1")
-  );
+  return visibleTripDataKind(trip.dataKind);
 }
 export function tripInput(title: unknown, city: unknown) {
   if (

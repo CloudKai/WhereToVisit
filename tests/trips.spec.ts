@@ -11,11 +11,18 @@ async function account(request: APIRequestContext) {
     email: `organiser-${randomBytes(8).toString("hex")}@example.invalid`,
     password: "Local-test-password-123",
   };
-  const response = await request.post("/api/auth/sign-up/email", {
-    headers,
-    data: { ...identity, name: "Organiser" },
-  });
-  expect(response.status()).toBe(200);
+  await expect
+    .poll(
+      async () => {
+        const response = await request.post("/api/auth/sign-up/email", {
+          headers,
+          data: { ...identity, name: "Organiser" },
+        });
+        return response.status();
+      },
+      { timeout: 70_000, intervals: [1000, 5000, 5000] },
+    )
+    .toBe(200);
   return identity;
 }
 async function imported(request: APIRequestContext, title = "Resolution") {
@@ -373,4 +380,129 @@ test("a real storage write failure leaves the private Trip unchanged and offers 
   } finally {
     lock.close();
   }
+});
+
+test("failed selection and deselection retry preserves the organiser's requested state", async ({
+  page,
+}) => {
+  await account(page.request);
+  const pending = await intent(page.request, "fictional-cafe-east");
+  const saved = await trip(page.request, "Selection retry");
+  await page.request.post(`/api/trips/${saved.id}`, {
+    headers,
+    data: { action: "save", intentId: pending.id },
+  });
+  await page.goto("/trips", { waitUntil: "domcontentloaded" });
+  const selection = page.getByLabel("Select East branch for a day plan");
+  await expect(selection).not.toBeChecked();
+  for (const requested of [true, false]) {
+    await page.route("**/api/trips/*", (route) => route.abort());
+    await selection.click();
+    await expect(
+      page.getByRole("alert", { name: "Trip request failed" }),
+    ).toContainText("Retry");
+    const before = (
+      await (await page.request.get(`/api/trips/${saved.id}`)).json()
+    ).trip.selectedPlaceIds;
+    expect(before).toEqual(requested ? [] : ["fictional-cafe-east"]);
+    await page.unroute("**/api/trips/*");
+    await page.getByRole("button", { name: "Retry" }).click();
+    if (requested) await expect(selection).toBeChecked();
+    else await expect(selection).not.toBeChecked();
+    expect(
+      (await (await page.request.get(`/api/trips/${saved.id}`)).json()).trip
+        .selectedPlaceIds,
+    ).toEqual(requested ? ["fictional-cafe-east"] : []);
+  }
+});
+
+test("a fresh import after account switching saves only eligible provenance, including a later anonymous continuation", async ({
+  request,
+}) => {
+  const firstId = await imported(request, "Resolution");
+  await confirmed(request, firstId);
+  const firstPending = await intent(request, "fictional-cafe-east", firstId);
+  await account(request);
+  expect(
+    (await request.get(`/api/trip-save-intents/${firstPending.id}`)).status(),
+  ).toBe(200);
+  await request.post("/api/auth/sign-out", { headers, data: {} });
+  const secondIdentity = await account(request);
+  const secondId = await imported(request, "ResolutionSecond");
+  await confirmed(request, secondId);
+  const secondPending = await intent(request, "fictional-cafe-east", secondId);
+  expect(
+    secondPending.importedEvidence.map(
+      (item: { importId: string }) => item.importId,
+    ),
+  ).toEqual([secondId]);
+  const saved = await trip(request, "Second organiser's fresh source");
+  expect(
+    (
+      await request.post(`/api/trips/${saved.id}`, {
+        headers,
+        data: { action: "save", intentId: secondPending.id },
+      })
+    ).status(),
+  ).toBe(200);
+  await request.post("/api/auth/sign-out", { headers, data: {} });
+  const anonymousPending = await intent(
+    request,
+    "fictional-cafe-east",
+    secondId,
+  );
+  const protectedPending = await intent(
+    request,
+    "fictional-cafe-east",
+    firstId,
+  );
+  expect(
+    (
+      await request.post("/api/auth/sign-in/email", {
+        headers,
+        data: secondIdentity,
+      })
+    ).status(),
+  ).toBe(200);
+  const reviewed = await request.get(
+    `/api/trip-save-intents/${anonymousPending.id}`,
+  );
+  expect(reviewed.status()).toBe(200);
+  expect(
+    (await reviewed.json()).intent.importedEvidence.map(
+      (item: { importId: string }) => item.importId,
+    ),
+  ).toEqual([secondId]);
+  expect(
+    (
+      await request.get(`/api/trip-save-intents/${protectedPending.id}`)
+    ).status(),
+  ).toBe(404);
+  expect(
+    (
+      await request.post("/api/trip-save-intents", {
+        headers,
+        data: { placeId: "fictional-cafe-east", importId: firstId },
+      })
+    ).status(),
+  ).toBe(404);
+  expect(
+    (
+      await request.post(`/api/trips/${saved.id}`, {
+        headers,
+        data: { action: "save", intentId: anonymousPending.id },
+      })
+    ).status(),
+  ).toBe(200);
+  const persisted = (await (await request.get(`/api/trips/${saved.id}`)).json())
+    .trip;
+  expect(
+    persisted.savedPlaces[0].importedEvidence.map(
+      (item: { importId: string }) => item.importId,
+    ),
+  ).toEqual([secondId]);
+  expect(persisted.savedPlaces[0].importedEvidence[0].source).toEqual(
+    secondPending.importedEvidence[0].source,
+  );
+  expect((await request.get(`/api/imports/${firstId}`)).status()).toBe(200);
 });

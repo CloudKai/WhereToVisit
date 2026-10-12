@@ -286,6 +286,7 @@ export type ResolvedImportPlace = {
 /** Explicit save continuation, bound to its initiating browser and first authenticated organiser. */
 export type TripSaveIntent = {
   id: string;
+  requestedImportId: string | null;
   organiserUserId: string | null;
   expiresAt: string;
   dataKind: "real" | "fixture";
