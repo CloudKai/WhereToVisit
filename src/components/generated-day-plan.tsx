@@ -22,12 +22,7 @@ export function GeneratedDayPlan({
   const time = (minute: number | null) =>
     minute === null
       ? "Timing unresolved"
-      : `${Math.floor(minute / 60)
-          .toString()
-          .padStart(
-            2,
-            "0",
-          )}:${(minute % 60).toString().padStart(2, "0")} (Shanghai, assumed schedule)`;
+      : `${clock(minute)} (Shanghai, assumed schedule)`;
   return (
     <section aria-label="Generated day plan" className="import-job">
       <h3>Generated day plan</h3>
