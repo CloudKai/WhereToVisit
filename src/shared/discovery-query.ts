@@ -1,4 +1,4 @@
-import type { CatalogueQuery, MapArea, Place } from "./contracts";
+import type { CatalogueQuery, Coordinates, MapArea, Place } from "./contracts";
 
 export const budgetLabels = {
   low: "CNY 0–50",
@@ -162,6 +162,21 @@ function metresBetween(place: Place, query: CatalogueQuery): number | null {
   );
 }
 
+/** Same qualified datum and inclusive bounds, shared by search and viewport display. */
+export function coordinatesWithinArea(
+  coordinates: Coordinates | null,
+  area: MapArea,
+): boolean {
+  return Boolean(
+    coordinates &&
+      coordinates.system === area.system &&
+      coordinates.latitude >= area.south &&
+      coordinates.latitude <= area.north &&
+      coordinates.longitude >= area.west &&
+      coordinates.longitude <= area.east,
+  );
+}
+
 /** Filters intersect; missing facts never satisfy known-value constraints. */
 export function matchesDiscoveryQuery(
   place: Place,
@@ -200,18 +215,8 @@ export function matchesDiscoveryQuery(
     if (distance === null || distance > query.distance.radiusMetres)
       return false;
   }
-  if (query.area) {
-    const point = place.coordinates;
-    if (
-      !point ||
-      point.system !== query.area.system ||
-      point.latitude < query.area.south ||
-      point.latitude > query.area.north ||
-      point.longitude < query.area.west ||
-      point.longitude > query.area.east
-    )
-      return false;
-  }
+  if (query.area && !coordinatesWithinArea(place.coordinates, query.area))
+    return false;
   return true;
 }
 

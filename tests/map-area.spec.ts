@@ -372,3 +372,45 @@ test("development map fixtures stop when the current publication becomes real", 
     );
   }
 });
+
+test("reselecting the same pin or list place reopens its native source disclosure", async ({
+  page,
+}) => {
+  writeFileSync(".data/catalogue-scenario.json", JSON.stringify(mapFixture()));
+  try {
+    await page.goto("/discover");
+    const place = page.getByRole("article").first();
+    const disclosure = place.locator("details");
+    const summary = place.getByText("Sources and place details", {
+      exact: true,
+    });
+    const pin = page.getByRole("button", {
+      name: "Map place: Fictional Scenario Café, East branch",
+    });
+    await pin.click();
+    await expect(disclosure).toHaveAttribute("open", "");
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    await expect(disclosure).not.toHaveAttribute("open", "");
+    await pin.click();
+    await expect(disclosure).toHaveAttribute("open", "");
+    await expect(place).toContainText("A second fictional recommendation");
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    await expect(disclosure).not.toHaveAttribute("open", "");
+    await place.getByRole("button", { name: "Select place" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(disclosure).toHaveAttribute("open", "");
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    await expect(disclosure).not.toHaveAttribute("open", "");
+    await page.keyboard.press("Enter");
+    await expect(disclosure).toHaveAttribute("open", "");
+  } finally {
+    writeFileSync(
+      ".data/catalogue-scenario.json",
+      JSON.stringify(catalogueFixture()),
+    );
+  }
+});

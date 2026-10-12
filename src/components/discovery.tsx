@@ -37,6 +37,7 @@ export function Discovery({
   mapFixtureEnabled?: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectionRevision, setSelectionRevision] = useState(0);
   const [view, setView] = useState("both");
   const [pendingArea, setPendingArea] = useState<MapArea>(initialFixtureArea);
   const [searchedArea, setSearchedArea] = useState<MapArea | null>(null);
@@ -45,6 +46,7 @@ export function Discovery({
 
   function select(id: string) {
     setSelectedId(id);
+    setSelectionRevision((revision) => revision + 1);
     setView("both");
   }
   const [result, setResult] = useState(initialResult);
@@ -395,6 +397,7 @@ export function Discovery({
                 <CatalogueList
                   catalogue={result.data}
                   selectedId={selectedId}
+                  selectionRevision={selectionRevision}
                   onSelect={select}
                 />
               </>

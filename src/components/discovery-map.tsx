@@ -1,6 +1,6 @@
 "use client";
 import type { MapArea, Place } from "@/shared/contracts";
-import { sameMapArea } from "@/shared/discovery-query";
+import { coordinatesWithinArea, sameMapArea } from "@/shared/discovery-query";
 
 export const initialFixtureArea: MapArea = {
   south: 31.2,
@@ -64,17 +64,9 @@ export function DiscoveryMap({
       system: pendingArea.system,
     });
   }
-  const visible = places.filter((place) => {
-    const point = place.coordinates;
-    return (
-      point &&
-      point.system === pendingArea.system &&
-      point.latitude >= pendingArea.south &&
-      point.latitude <= pendingArea.north &&
-      point.longitude >= pendingArea.west &&
-      point.longitude <= pendingArea.east
-    );
-  });
+  const visible = places.filter((place) =>
+    coordinatesWithinArea(place.coordinates, pendingArea),
+  );
   return (
     <>
       <p className="fixture-notice">

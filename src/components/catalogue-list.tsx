@@ -1,3 +1,5 @@
+"use client";
+import { useEffect, useRef } from "react";
 import type { CatalogueResult } from "@/shared/contracts";
 
 const sourceFactLabels = {
@@ -23,12 +25,20 @@ const classificationLabels = {
 export function CatalogueList({
   catalogue,
   selectedId,
+  selectionRevision = 0,
   onSelect,
 }: {
   catalogue: CatalogueResult;
   selectedId?: string | null;
+  selectionRevision?: number;
   onSelect?: (id: string) => void;
 }) {
+  const disclosures = useRef(new Map<string, HTMLDetailsElement>());
+  useEffect(() => {
+    if (selectionRevision === 0) return;
+    const disclosure = selectedId ? disclosures.current.get(selectedId) : null;
+    if (disclosure) disclosure.open = true;
+  }, [selectedId, selectionRevision]);
   return (
     <>
       <p role="status">{catalogue.coverageMessage}</p>
@@ -81,7 +91,12 @@ export function CatalogueList({
                 : "Rating unknown"}
               .
             </p>
-            <details open={selectedId === place.id ? true : undefined}>
+            <details
+              ref={(element) => {
+                if (element) disclosures.current.set(place.id, element);
+                else disclosures.current.delete(place.id);
+              }}
+            >
               <summary>Sources and place details</summary>
               {[
                 ["Price", place.price?.sourceEvidenceId],
