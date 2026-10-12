@@ -80,6 +80,9 @@ function templates(text: string) {
   return { found, excluded };
 }
 function templateFields(content: string) {
+  // Protected/HTML spans are outside this conservative parameter subset.
+  // Reject the template rather than interpret literal pipes as listing fields.
+  if (/[<>]/.test(content)) return null;
   const fields: { text: string; offset: number }[] = [];
   let templates = 0,
     links = 0,
@@ -303,13 +306,21 @@ export function extractListings(
       false,
       true,
     );
+  let uncoveredStart = 0;
+  let unanalysedOutsideSections = false;
+  for (const section of sections) {
+    if (
+      section.start > uncoveredStart &&
+      meaningful(uncoveredStart, section.start)
+    )
+      unanalysedOutsideSections = true;
+    uncoveredStart = Math.max(uncoveredStart, section.end);
+  }
+  if (uncoveredStart < text.length && meaningful(uncoveredStart, text.length))
+    unanalysedOutsideSections = true;
   return {
     mentions,
     evidence,
-    partial:
-      skipped ||
-      unsupportedSectionContent ||
-      meaningful(0, sections[0].start) ||
-      meaningful(sections[sections.length - 1].end, text.length),
+    partial: skipped || unsupportedSectionContent || unanalysedOutsideSections,
   };
 }

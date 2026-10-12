@@ -156,6 +156,7 @@ test("source redirects and unsafe URL spelling are rejected at the authoritative
   playwright,
 }) => {
   const cases = [
+    "https://en.wikivoyage.org/WIKI/Test",
     "http://127.0.0.1/wiki/Test",
     "https://[::ffff:127.0.0.1]/wiki/Test",
     "https://user:secret@en.wikivoyage.org/wiki/Test",
@@ -327,4 +328,32 @@ test("rejected URLs retain neither credentials nor private query text and still 
     data: { sourceUrl },
   });
   expect((await repeated.json()).job.id).toBe(job.id);
+});
+
+test("protected description text cannot fabricate a listing name", async ({
+  request,
+}) => {
+  const job = await terminal(
+    request,
+    (await submit(request, "Fixture_Protected")).id,
+  );
+  expect(job).toMatchObject({
+    status: "unsupported",
+    reason: { code: "format-unsupported" },
+    mentions: [],
+  });
+});
+
+test("unanalysed prose between supported sections is disclosed as partial", async ({
+  request,
+}) => {
+  const job = await terminal(
+    request,
+    (await submit(request, "Fixture_Intervening")).id,
+  );
+  expect(job.mentions.map((mention) => mention.originalText)).toEqual([
+    "Real Listing One",
+    "Real Listing Two",
+  ]);
+  expect(job.partial).toBe(true);
 });

@@ -1,6 +1,10 @@
 import "server-only";
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import { developmentArticle } from "@/development/import-source";
+import {
+  developmentArticle,
+  developmentImportFixturesEnabled,
+  isDevelopmentImportFixture,
+} from "@/development/import-source";
 import type { Import } from "@/shared/contracts";
 import { getAuthConfiguration } from "./config";
 import { openDatabase } from "./db/connection";
@@ -30,6 +34,19 @@ function withDatabase<T>(
     sqlite.close();
   }
 }
+/** Apply to reads, duplicates, mutations and worker admission; stored fixtures are never production data. */
+function visibleImportsSql() {
+  return developmentImportFixturesEnabled()
+    ? ""
+    : " AND json_extract(document, '$.dataKind') <> 'fixture'";
+}
+function providerBackoffUntil(db: ReturnType<typeof openDatabase>["sqlite"]) {
+  return (
+    db
+      .prepare("SELECT backoff_until FROM import_provider_state WHERE id=1")
+      .get() as { backoff_until: number }
+  ).backoff_until;
+}
 function cleanup(db: ReturnType<typeof openDatabase>["sqlite"]) {
   const now = Date.now();
   db.prepare("DELETE FROM import_jobs WHERE expires_at <= ?").run(now);
@@ -37,7 +54,7 @@ function cleanup(db: ReturnType<typeof openDatabase>["sqlite"]) {
   db.prepare("DELETE FROM import_attempts WHERE created_at < ?").run(now - DAY);
   const stuck = db
     .prepare(
-      "SELECT id, document FROM import_jobs WHERE (status='processing' AND updated_at < ?) OR (status='queued' AND created_at < ?)",
+      `SELECT id, document FROM import_jobs WHERE ((status='processing' AND updated_at < ?) OR (status='queued' AND created_at < ?))${visibleImportsSql()}`,
     )
     .all(now - 45_000, now - 120_000) as { id: string; document: string }[];
   for (const row of stuck) {
@@ -95,7 +112,7 @@ export function listImports(session: string) {
     cleanup(db);
     const rows = db
       .prepare(
-        "SELECT document FROM import_jobs WHERE session_digest=? ORDER BY created_at DESC LIMIT 20",
+        `SELECT document FROM import_jobs WHERE session_digest=?${visibleImportsSql()} ORDER BY created_at DESC LIMIT 20`,
       )
       .all(session) as { document: string }[];
     return rows.map((row) => ({
@@ -109,7 +126,7 @@ export function getImport(session: string, id: string) {
     cleanup(db);
     const row = db
       .prepare(
-        "SELECT document FROM import_jobs WHERE id=? AND session_digest=?",
+        `SELECT document FROM import_jobs WHERE id=? AND session_digest=?${visibleImportsSql()}`,
       )
       .get(id, session) as { document: string } | undefined;
     return row
@@ -165,7 +182,7 @@ function capacity(
     (
       db
         .prepare(
-          "SELECT COUNT(*) AS count FROM import_jobs WHERE status IN ('queued','processing')",
+          `SELECT COUNT(*) AS count FROM import_jobs WHERE status IN ('queued','processing')${visibleImportsSql()}`,
         )
         .get() as { count: number }
     ).count,
@@ -174,7 +191,7 @@ function capacity(
     (
       db
         .prepare(
-          "SELECT COUNT(*) AS count FROM import_jobs WHERE session_digest=? AND status IN ('queued','processing')",
+          `SELECT COUNT(*) AS count FROM import_jobs WHERE session_digest=? AND status IN ('queued','processing')${visibleImportsSql()}`,
         )
         .get(session) as { count: number }
     ).count,
@@ -183,7 +200,7 @@ function capacity(
     (
       db
         .prepare(
-          "SELECT COUNT(*) AS count FROM import_jobs WHERE session_digest=? AND status='queued'",
+          `SELECT COUNT(*) AS count FROM import_jobs WHERE session_digest=? AND status='queued'${visibleImportsSql()}`,
         )
         .get(session) as { count: number }
     ).count,
@@ -198,7 +215,7 @@ function capacity(
     (
       db
         .prepare(
-          "SELECT COUNT(*) AS count FROM import_jobs WHERE session_digest=?",
+          `SELECT COUNT(*) AS count FROM import_jobs WHERE session_digest=?${visibleImportsSql()}`,
         )
         .get(session) as { count: number }
     ).count,
@@ -241,7 +258,7 @@ export function createImport(session: string, ip: string, sourceUrl: string) {
         `rejected:${createHmac("sha256", getAuthConfiguration().secret).update(sourceUrl).digest("hex")}`;
       const existing = db
         .prepare(
-          "SELECT document FROM import_jobs WHERE session_digest=? AND source_key=? ORDER BY created_at DESC LIMIT 1",
+          `SELECT document FROM import_jobs WHERE session_digest=? AND source_key=?${visibleImportsSql()} ORDER BY created_at DESC LIMIT 1`,
         )
         .get(session, sourceKey) as { document: string } | undefined;
       if (existing)
@@ -257,7 +274,10 @@ export function createImport(session: string, ip: string, sourceUrl: string) {
           .get(session) as { expires_at: number }
       ).expires_at;
       const job: Import = {
-        dataKind: "real",
+        dataKind:
+          validated && isDevelopmentImportFixture(validated.title)
+            ? "fixture"
+            : "real",
         id: randomBytes(18).toString("base64url"),
         sourceUrl: failure
           ? "Rejected URL (unsupported or unsafe input)"
@@ -312,7 +332,7 @@ export function mutateImport(
       cleanup(db);
       const row = db
         .prepare(
-          "SELECT document FROM import_jobs WHERE id=? AND session_digest=?",
+          `SELECT document FROM import_jobs WHERE id=? AND session_digest=?${visibleImportsSql()}`,
         )
         .get(id, session) as { document: string } | undefined;
       if (!row) return null;
@@ -342,13 +362,7 @@ export function mutateImport(
           );
         consumeAttempt(db, session, ip);
         capacity(db, session, false);
-        const backoff = (
-          db
-            .prepare(
-              "SELECT backoff_until FROM import_provider_state WHERE id=1",
-            )
-            .get() as { backoff_until: number }
-        ).backoff_until;
+        const backoff = providerBackoffUntil(db);
         if (backoff > Date.now())
           throw new ImportFailure(
             "rate-limited",
@@ -384,7 +398,7 @@ async function worker() {
         if (process.env.IMPORTS_ENABLED !== "1") {
           const rows = db
             .prepare(
-              "SELECT id,document FROM import_jobs WHERE status='queued'",
+              `SELECT id,document FROM import_jobs WHERE status='queued'${visibleImportsSql()}`,
             )
             .all() as { id: string; document: string }[];
           for (const row of rows) {
@@ -405,25 +419,19 @@ async function worker() {
         if (
           db
             .prepare(
-              "SELECT id FROM import_jobs WHERE status='processing' LIMIT 1",
+              `SELECT id FROM import_jobs WHERE status='processing'${visibleImportsSql()} LIMIT 1`,
             )
             .get()
         )
           return null;
         const row = db
           .prepare(
-            "SELECT document FROM import_jobs WHERE status='queued' ORDER BY created_at LIMIT 1",
+            `SELECT document FROM import_jobs WHERE status='queued'${visibleImportsSql()} ORDER BY created_at LIMIT 1`,
           )
           .get() as { document: string } | undefined;
         if (!row) return null;
         const pending: Import = JSON.parse(row.document);
-        const backoff = (
-          db
-            .prepare(
-              "SELECT backoff_until FROM import_provider_state WHERE id=1",
-            )
-            .get() as { backoff_until: number }
-        ).backoff_until;
+        const backoff = providerBackoffUntil(db);
         if (backoff > Date.now()) return null;
         pending.status = "processing";
         pending.updatedAt = new Date().toISOString();

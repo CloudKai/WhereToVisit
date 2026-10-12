@@ -55,6 +55,11 @@ export function articleInput(input: string) {
     );
   }
   const url = new URL(input);
+  if (!url.pathname.startsWith("/wiki/"))
+    throw new ImportFailure(
+      "unsafe-url",
+      "Use the exact case-sensitive /wiki/ article path.",
+    );
   const path = input.split("#")[0].replace(/^https:\/\/[^/]+/i, "");
   if (
     /%(?:2f|5c|2e|25|3f|23|3a|00)/i.test(path) ||

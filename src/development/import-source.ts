@@ -5,17 +5,21 @@ import {
   validateSourcePayload,
   type WikiSource,
 } from "@/server/wikivoyage-fetch";
+export function developmentImportFixturesEnabled() {
+  return (
+    process.env.NODE_ENV === "development" &&
+    process.env.ENABLE_DEVELOPMENT_IMPORT_FIXTURE === "1"
+  );
+}
+export function isDevelopmentImportFixture(title: string) {
+  return developmentImportFixturesEnabled() && title.startsWith("Fixture ");
+}
 /** Authored boundary fixtures. Never called outside explicit development mode. */
 export async function developmentArticle(
   title: string,
   signal: AbortSignal,
 ): Promise<WikiSource | null> {
-  if (
-    process.env.NODE_ENV !== "development" ||
-    process.env.ENABLE_DEVELOPMENT_IMPORT_FIXTURE !== "1" ||
-    !title.startsWith("Fixture ")
-  )
-    return null;
+  if (!isDevelopmentImportFixture(title)) return null;
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(resolve, title === "Fixture Slow" ? 3000 : 250);
     signal.addEventListener(
@@ -57,6 +61,12 @@ export async function developmentArticle(
   if (title === "Fixture Nested")
     wikitext =
       "== Eat ==\n{{eat|name=Plain Name}}\n{{eat|name={{lang|zh|嵌套}}}}\nUnanalysed prose.";
+  if (title === "Fixture Protected")
+    wikitext =
+      "== Eat ==\n{{eat|description=<nowiki>|name=Fake Café|x=</nowiki>}}";
+  if (title === "Fixture Intervening")
+    wikitext =
+      "== Eat ==\n{{eat|name=Real Listing One}}\n== See ==\nProse mentioning another destination.\n== Drink ==\n{{drink|name=Real Listing Two}}";
   if (title === "Fixture WrongRevision")
     return validateSourcePayload(
       title,

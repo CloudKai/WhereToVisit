@@ -24,7 +24,8 @@
     "nginx:stop": "node scripts/nginx.mjs stop",
     "config:local": "node scripts/init-local.mjs",
     "catalogue:load": "node --import tsx ./src/server/catalogue-load.ts",
-    "test:catalogue": "playwright test --config playwright.catalogue.config.ts"
+    "test:catalogue": "playwright test --config playwright.catalogue.config.ts",
+    "test:import-transition": "playwright test --config playwright.import-transition.config.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.7",
