@@ -325,8 +325,12 @@ export function GuestTrip({
           )}
           <p>
             You can suggest Places, comment and vote. The organiser controls
-            final selections and one-day draft inputs. Generation is not
-            available yet.
+            final selections and one-day draft inputs.
+          </p>
+          <p>
+            Only the organiser can generate a day plan. Guests can read the
+            saved result. Live routes and real travel timings remain
+            unavailable.
           </p>
           <a href={`/shared-trips/${shared.trip.id}`} className="text-link">
             Return to this shared Trip

@@ -123,6 +123,15 @@ test("organiser generates a grounded real day order with unavailable timing and 
     await expect(sharedPlan).toContainText("Timing unresolved");
     await expect(sharedPlan).toContainText("Shanghai Roastery");
     await expect(
+      guestPage.getByText(
+        "Only the organiser can generate a day plan. Guests can read the saved result. Live routes and real travel timings remain unavailable.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      guestPage.getByText("Generation is not available yet.", { exact: false }),
+    ).toHaveCount(0);
+    await expect(
       guestPage.getByRole("button", { name: "Generate day plan", exact: true }),
     ).toHaveCount(0);
     expect(
