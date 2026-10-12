@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Trip, TripSaveIntent } from "@/shared/contracts";
 import { CollaborationPanel } from "./collaboration";
+import { DayPlanInputs } from "./day-plan";
 import { ImportedEvidence } from "./imported-evidence";
 import { InvitationControls } from "./invitations";
 
@@ -412,6 +413,14 @@ export function TripDashboard({
                   </article>
                 ))}
               </section>
+              <DayPlanInputs
+                key={`day:${trip.id}:${trip.dataKind}`}
+                trip={trip}
+                onTripReload={() => load()}
+                onDenied={() => {
+                  void load();
+                }}
+              />
               <CollaborationPanel
                 key={`decisions:${trip.id}:${trip.dataKind}`}
                 tripId={trip.id}

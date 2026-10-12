@@ -6,6 +6,7 @@ import type {
   SharedGuestTrip,
 } from "@/shared/contracts";
 import { CollaborationPanel } from "./collaboration";
+import { SharedDayPlan } from "./day-plan";
 import { ImportedEvidence } from "./imported-evidence";
 
 class GuestRequestFailure extends Error {
@@ -324,7 +325,8 @@ export function GuestTrip({
           )}
           <p>
             You can suggest Places, comment and vote. The organiser controls
-            final selections; day plans are not available yet.
+            final selections and one-day draft inputs. Generation is not
+            available yet.
           </p>
           <a href={`/shared-trips/${shared.trip.id}`} className="text-link">
             Return to this shared Trip
@@ -332,6 +334,7 @@ export function GuestTrip({
           <button type="button" disabled={busy} onClick={() => void run(load)}>
             Refresh shared Trip
           </button>
+          <SharedDayPlan state={shared.trip.dayPlan} />
           <ParticipantList participants={shared.participants} />
           <CollaborationPanel
             key={`${shared.trip.id}:${shared.trip.dataKind}`}

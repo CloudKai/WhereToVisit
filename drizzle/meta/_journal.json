@@ -43,6 +43,13 @@
       "when": 1791811255236,
       "tag": "0005_trip_collaboration",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791815464634,
+      "tag": "0006_day_plan_requests",
+      "breakpoints": true
     }
   ]
 }

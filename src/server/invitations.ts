@@ -8,6 +8,7 @@ import type {
   TripInvitation,
 } from "@/shared/contracts";
 import { getAuthConfiguration } from "./config";
+import { dayPlanState } from "./day-plan-state";
 import { openDatabase } from "./db/connection";
 import { TripFailure, visibleTrip } from "./trips";
 
@@ -199,6 +200,7 @@ function shared(
       dataKind: trip.dataKind,
       selectedPlaceIds: trip.selectedPlaceIds,
       dayPlanIds: trip.dayPlanIds,
+      dayPlan: dayPlanState(db, trip),
       savedPlaces: trip.savedPlaces.map((member) => ({
         placeId: member.placeId,
         place: member.place,

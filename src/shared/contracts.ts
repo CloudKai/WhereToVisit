@@ -208,6 +208,7 @@ export type Trip = {
     importedEvidence: ResolvedImportPlace["importedEvidence"];
   }[];
   selectedPlaceIds: string[];
+  selectionRevision?: number;
   createdAt: string;
   updatedAt: string;
   dayPlanIds: string[];
@@ -217,10 +218,24 @@ export type DayPlanRequest = {
   visitDate: string;
   selectedPlaceIds: string[];
   mode: "walking-transit" | "taxi-car";
-  startArea?: string;
-  budget?: string;
-  dietaryNeeds?: string;
-  pace?: string;
+  startArea: string | null;
+  budget: string | null;
+  dietaryNeeds: string | null;
+  pace: "relaxed" | "balanced" | "busy" | null;
+};
+/** Persisted inputs only. A stale selection requires a fresh explicit draft save. */
+export type DayPlanDraft = {
+  id: string;
+  revision: number;
+  selectionRevision: number;
+  request: DayPlanRequest;
+  createdAt: string;
+  updatedAt: string;
+};
+export type DayPlanDraftState = {
+  draft: DayPlanDraft | null;
+  selectionRevision: number;
+  needsReview: boolean;
 };
 export type DayPlan = {
   id: string;
@@ -317,6 +332,7 @@ export type SharedGuestTrip = {
     Trip,
     "id" | "title" | "city" | "dataKind" | "selectedPlaceIds" | "dayPlanIds"
   > & {
+    dayPlan: DayPlanDraftState;
     savedPlaces: {
       placeId: string;
       place: Place;

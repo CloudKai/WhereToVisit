@@ -25,6 +25,7 @@
     "config:local": "node scripts/init-local.mjs",
     "catalogue:load": "node --import tsx ./src/server/catalogue-load.ts",
     "test:catalogue": "playwright test --config playwright.catalogue.config.ts",
+    "test:day-plan-storage": "playwright test --config playwright.day-plan-storage.config.ts",
     "test:import-transition": "playwright test --config playwright.import-transition.config.ts"
   },
   "dependencies": {

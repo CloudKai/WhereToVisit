@@ -6,6 +6,7 @@ export default defineConfig({
     "shell.spec.ts",
     "trips-production.spec.ts",
     "invitations-production.spec.ts",
+    "day-plans-production.spec.ts",
   ],
   fullyParallel: false,
   workers: 1,

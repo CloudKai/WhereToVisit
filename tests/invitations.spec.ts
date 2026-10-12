@@ -66,6 +66,7 @@ test("owner invitation explicitly joins and resumes a guest without leaking priv
       savedPlaces: [],
       selectedPlaceIds: [],
       dayPlanIds: [],
+      dayPlan: { draft: null, selectionRevision: 0, needsReview: false },
     });
     expect(shared.participant.displayName).toBe("Alex");
     expect(
