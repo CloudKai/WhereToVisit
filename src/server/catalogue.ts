@@ -75,7 +75,7 @@ const catalogue: CatalogueProvider = {
         status: "unavailable",
         reason: "catalogue-storage-not-ready",
         message:
-          "The Shanghai shortlist is unavailable. Apply the local database migrations and load the reviewed catalogue publication before serving discovery.",
+          "The Shanghai shortlist is temporarily unavailable. Please try again later.",
       };
     }
   },

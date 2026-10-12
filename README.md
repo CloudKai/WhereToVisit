@@ -38,7 +38,7 @@ npm run start
 npm run nginx:serve
 ```
 
-The build requires no database or auth secret. SQLite connections open lazily at runtime. Apply checked-in SQL and explicitly load the reviewed catalogue publication before serving discovery; startup does not generate migrations or curate/load real data automatically. A missing database, migration or publication returns a truthful unavailable state.
+The build requires no database or auth secret. SQLite connections open lazily at runtime. Apply checked-in SQL and explicitly load the reviewed catalogue publication before serving discovery; startup does not generate migrations or curate/load real data automatically. A missing database, migration or publication returns a truthful unavailable state. If catalogue storage is not ready, the operator should verify `DATABASE_PATH`, apply the local migrations and load the reviewed publication; visitors receive a simple unavailable message.
 
 ## Validation and maintenance
 

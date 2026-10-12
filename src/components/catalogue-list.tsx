@@ -1,4 +1,25 @@
 import type { CatalogueResult } from "@/shared/contracts";
+
+const sourceFactLabels = {
+  identity: "branch name and address",
+  category: "food or café category",
+  neighbourhood: "area",
+  operation: "operating status",
+  price: "price",
+  hours: "opening hours",
+  rating: "provider rating",
+  classification: "recommendation type",
+};
+const sourceStatusLabels = {
+  current: "page checked",
+  historical: "historical evidence",
+  unverified: "not confirmed",
+};
+const classificationLabels = {
+  trending: "Trending",
+  "local-favourite": "Local favourite",
+  "highly-reviewed": "Highly reviewed",
+};
 export function CatalogueList({ catalogue }: { catalogue: CatalogueResult }) {
   return (
     <>
@@ -22,7 +43,12 @@ export function CatalogueList({ catalogue }: { catalogue: CatalogueResult }) {
               {place.category === "cafe" ? "Café" : "Food"}
             </p>
             <p>
-              Operation {place.operationStatus}.{" "}
+              {place.operationStatus === "unknown"
+                ? "Operating status unconfirmed"
+                : place.operationStatus === "current"
+                  ? "Venue reports current operation"
+                  : "Venue reported closed"}
+              .{" "}
               {place.price
                 ? `${place.price.currency} ${place.price.amount}`
                 : "Price unknown"}
@@ -59,7 +85,7 @@ export function CatalogueList({ catalogue }: { catalogue: CatalogueResult }) {
                 ? place.classifications
                     .map(
                       (item) =>
-                        `${item.type}: ${item.reason} (rule: ${item.rule}, ${item.ruleDate})`,
+                        `${classificationLabels[item.type]}: ${item.reason} (rule: ${item.rule}, ${item.ruleDate.slice(0, 10)})`,
                     )
                     .join("; ")
                 : "Unclassified — no evidenced recommendation type assigned."}
@@ -80,13 +106,16 @@ export function CatalogueList({ catalogue }: { catalogue: CatalogueResult }) {
                   <time dateTime={evidence.capturedAt}>
                     {evidence.capturedAt.slice(0, 10)}
                   </time>{" "}
-                  · {evidence.status}
+                  · {sourceStatusLabels[evidence.status]}
                   {evidence.publishedAt
                     ? ` · published ${evidence.publishedAt.slice(0, 10)}`
                     : " · publication date unknown"}
                   <p>
-                    Establishes: {evidence.establishedFacts.join(", ")}.{" "}
-                    {evidence.limits}
+                    Source supports:{" "}
+                    {evidence.establishedFacts
+                      .map((fact) => sourceFactLabels[fact])
+                      .join(", ")}
+                    . {evidence.limits}
                   </p>
                 </li>
               ))}
