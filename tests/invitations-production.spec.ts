@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 const origin = "http://127.0.0.1:8180";
@@ -90,6 +90,78 @@ test("production invitation shares only sourced canonical facts and revokes deri
         })
       ).status(),
     ).toBe(401);
+    const collaborationPath = `/api/guest-trips/${trip.id}/collaboration`;
+    const vote = {
+      action: "vote",
+      placeId: "bluebottle-zhangyuan",
+      choice: "must-go",
+      operationId: randomUUID(),
+    };
+    expect(
+      (
+        await guest.request.post(collaborationPath, { headers, data: vote })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await guest.request.post(collaborationPath, {
+          headers,
+          data: {
+            action: "comment",
+            placeId: "bluebottle-zhangyuan",
+            text: "Source-backed coffee choice",
+            operationId: randomUUID(),
+          },
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await guest.request.post(collaborationPath, {
+          headers,
+          data: {
+            action: "suggest",
+            placeId: "fictional-cafe-west",
+            operationId: randomUUID(),
+          },
+        })
+      ).status(),
+    ).toBe(400);
+    const suggested = await guest.request.post(collaborationPath, {
+      headers,
+      data: {
+        action: "suggest",
+        placeId: "bluebottle-westbund",
+        operationId: randomUUID(),
+      },
+    });
+    expect(suggested.status()).toBe(200);
+    const suggestion = (await suggested.json()).collaboration.suggestions[0];
+    for (let index = 0; index < 2; index++)
+      expect(
+        (
+          await page.request.post(`/api/trips/${trip.id}/collaboration`, {
+            headers,
+            data: {
+              action: "accept",
+              suggestionId: suggestion.id,
+              operationId: randomUUID(),
+            },
+          })
+        ).status(),
+      ).toBe(200);
+    const chosen = (
+      await (await page.request.get(`/api/trips/${trip.id}`)).json()
+    ).trip;
+    expect(chosen.savedPlaces).toHaveLength(2);
+    expect(chosen.selectedPlaceIds).toEqual([]);
+    await guestPage.reload();
+    await expect(
+      guestPage.getByRole("region", { name: "Group decisions" }),
+    ).toContainText("Must go 1 · Interested 0 · Skip 0");
+    await expect(
+      guestPage.getByRole("region", { name: "Group decisions" }),
+    ).toContainText("Source-backed coffee choice");
     for (const width of [375, 1280]) {
       await guestPage.setViewportSize({ width, height: 900 });
       expect(
@@ -121,6 +193,12 @@ test("production invitation shares only sourced canonical facts and revokes deri
         })
       ).status(),
     ).toBe(404);
+    expect((await guest.request.get(collaborationPath)).status()).toBe(404);
+    expect(
+      (
+        await guest.request.post(collaborationPath, { headers, data: vote })
+      ).status(),
+    ).toBe(404);
     const history = (
       await (await page.request.get(`/api/trips/${trip.id}/invitation`)).json()
     ).participants;
@@ -128,7 +206,7 @@ test("production invitation shares only sourced canonical facts and revokes deri
     expect(
       (await (await page.request.get(`/api/trips/${trip.id}`)).json()).trip
         .savedPlaces,
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   } finally {
     await guest.close();
   }

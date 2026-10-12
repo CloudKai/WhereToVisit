@@ -309,3 +309,35 @@ export function readGuestTrip(tripId: string, browserToken: string | null) {
     return shared(db, trip, invitation, participant);
   });
 }
+
+/** Resolves collaboration authority inside the same transaction as its data. */
+export function collaborationAuthority(
+  db: Database,
+  tripId: string,
+  authority: { userId: string } | { browserToken: string | null },
+) {
+  if ("userId" in authority) {
+    const trip = ownedTrip(db, authority.userId, tripId);
+    return {
+      trip,
+      actorId: "organiser",
+      participants: participantsFor(db, trip, invitationFor(db, trip)),
+    };
+  }
+  const trip = storedTrip(db, tripId);
+  if (!trip) return unavailable();
+  const invitation = invitationFor(db, trip);
+  if (invitation?.state !== "active") return unavailable();
+  const participant = sessionParticipant(
+    db,
+    trip,
+    invitation,
+    authority.browserToken,
+  );
+  if (!participant) return unavailable();
+  return {
+    trip,
+    actorId: participant.id,
+    participants: participantsFor(db, trip, invitation),
+  };
+}

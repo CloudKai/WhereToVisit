@@ -26,6 +26,7 @@ export default defineConfig({
     "resolution.spec.ts",
     "trips.spec.ts",
     "invitations.spec.ts",
+    "collaboration.spec.ts",
   ],
   workers: 1,
   fullyParallel: false,

@@ -555,3 +555,14 @@ fieldset.map-controls {
   margin-right: 1rem;
   margin-bottom: 1rem;
 }
+
+.trip-workflow textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 5rem;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.65rem;
+}

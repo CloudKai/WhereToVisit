@@ -1,5 +1,5 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
@@ -157,7 +157,7 @@ test("stored fictional imports cannot be read or mutated after development stora
         })
       ).status(),
     ).toBe(201);
-    const savedTrip = (
+    let savedTrip = (
       await (
         await request.post(`/api/trips/${trip.id}`, {
           headers,
@@ -190,6 +190,52 @@ test("stored fictional imports cannot be read or mutated after development stora
         })
       ).status(),
     ).toBe(201);
+    const collaborationPath = `/api/guest-trips/${trip.id}/collaboration`;
+    const ownerCollaborationPath = `/api/trips/${trip.id}/collaboration`;
+    const voteInput = {
+      action: "vote",
+      placeId: "fictional-cafe-east",
+      choice: "must-go",
+      operationId: randomUUID(),
+    };
+    for (const data of [
+      voteInput,
+      {
+        action: "comment",
+        placeId: "fictional-cafe-east",
+        text: "Retained fixture comment",
+        operationId: randomUUID(),
+      },
+      {
+        action: "suggest",
+        placeId: "fictional-cafe-west",
+        operationId: randomUUID(),
+      },
+    ])
+      expect(
+        (await guest.post(collaborationPath, { headers, data })).status(),
+      ).toBe(200);
+    const suggestion = (await (await guest.get(collaborationPath)).json())
+      .collaboration.suggestions[0];
+    expect(
+      (
+        await request.post(ownerCollaborationPath, {
+          headers,
+          data: {
+            action: "accept",
+            suggestionId: suggestion.id,
+            operationId: randomUUID(),
+          },
+        })
+      ).status(),
+    ).toBe(200);
+    savedTrip = (await (await request.get(`/api/trips/${trip.id}`)).json())
+      .trip;
+    const retainedCollaboration = (
+      await (await guest.get(collaborationPath)).json()
+    ).collaboration;
+    expect(retainedCollaboration.votes[0].choice).toBe("must-go");
+    expect(savedTrip.savedPlaces).toHaveLength(2);
     const sharedFixture = (
       await (await guest.get(`/api/guest-trips/${trip.id}`)).json()
     ).shared;
@@ -238,6 +284,49 @@ test("stored fictional imports cannot be read or mutated after development stora
         { timeout: 30_000 },
       )
       .toBe(200);
+    for (const [client, path] of [
+      [guest, collaborationPath],
+      [request, ownerCollaborationPath],
+    ] as const) {
+      expect((await client.get(path)).status()).toBe(404);
+      for (const data of [
+        voteInput,
+        {
+          action: "comment",
+          placeId: "fictional-cafe-east",
+          text: "Must not mutate",
+          operationId: randomUUID(),
+        },
+        {
+          action: "suggest",
+          name: "Must not create",
+          operationId: randomUUID(),
+        },
+        {
+          action: "amend",
+          suggestionId: suggestion.id,
+          name: "Must not amend",
+          operationId: randomUUID(),
+        },
+        {
+          action: "accept",
+          suggestionId: suggestion.id,
+          operationId: randomUUID(),
+        },
+        {
+          action: "reject",
+          suggestionId: suggestion.id,
+          operationId: randomUUID(),
+        },
+        {
+          action: "confirm",
+          suggestionId: suggestion.id,
+          placeId: "fictional-cafe-east",
+          operationId: randomUUID(),
+        },
+      ])
+        expect((await client.post(path, { headers, data })).status()).toBe(404);
+    }
     expect((await request.get(`/api/trips/${trip.id}`)).status()).toBe(404);
     expect(
       (await request.get(`/api/trips/${trip.id}/invitation`)).status(),
@@ -370,6 +459,12 @@ test("stored fictional imports cannot be read or mutated after development stora
     expect(
       (await (await guest.get(`/api/guest-trips/${trip.id}`)).json()).shared,
     ).toEqual(sharedFixture);
+    expect(
+      (await (await guest.get(collaborationPath)).json()).collaboration,
+    ).toEqual(retainedCollaboration);
+    expect(
+      (await (await request.get(ownerCollaborationPath)).json()).collaboration,
+    ).toEqual({ ...retainedCollaboration, actorId: "organiser" });
     const resumedFixture = await guest.post(
       `/api/invitations/${fixtureInvitation.token}`,
       { headers, data: { displayName: "Must resume" } },

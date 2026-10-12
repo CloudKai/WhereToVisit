@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Trip, TripSaveIntent } from "@/shared/contracts";
+import { CollaborationPanel } from "./collaboration";
 import { ImportedEvidence } from "./imported-evidence";
 import { InvitationControls } from "./invitations";
 
@@ -292,123 +293,137 @@ export function TripDashboard({
             </>
           )}
           {trip && (
-            <section aria-label="Saved shortlist" className="import-job">
-              <h2>{trip.title}</h2>
-              <p>
-                {trip.city} · {trip.selectedPlaceIds.length} selected for a
-                future day plan
-              </p>
-              {trip.dataKind === "fixture" && (
-                <p className="fixture-notice">
-                  Fictional scenario collection — application behaviour only.
-                </p>
-              )}
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void run(() =>
-                    mutate({
-                      action: "update",
-                      title: editTitle,
-                      city: "Shanghai",
-                    }),
-                  );
-                }}
-              >
-                <label htmlFor="trip-title">Trip title</label>
-                <input
-                  id="trip-title"
-                  required
-                  maxLength={120}
-                  value={editTitle}
-                  onChange={(event) => setEditTitle(event.target.value)}
-                />
-                <button type="submit" disabled={busy}>
-                  Update title
-                </button>
-              </form>
-              <InvitationControls
-                key={`${trip.id}:${trip.dataKind}`}
-                tripId={trip.id}
-              />
-              {!trip.savedPlaces.length && (
+            <>
+              <section aria-label="Saved shortlist" className="import-job">
+                <h2>{trip.title}</h2>
                 <p>
-                  No saved Places yet. Browse discovery or confirm an imported
-                  branch.
+                  {trip.city} · {trip.selectedPlaceIds.length} selected for a
+                  future day plan
                 </p>
-              )}
-              {trip.savedPlaces.map((member) => (
-                <article className="import-candidate" key={member.placeId}>
-                  <h3>{member.place.displayName}</h3>
-                  <p>
-                    {member.place.branch} · {member.place.address}
+                {trip.dataKind === "fixture" && (
+                  <p className="fixture-notice">
+                    Fictional scenario collection — application behaviour only.
                   </p>
-                  <label>
-                    <input
-                      type="checkbox"
-                      disabled={busy}
-                      checked={trip.selectedPlaceIds.includes(member.placeId)}
-                      onChange={(event) => {
-                        const selected = event.target.checked;
-                        void run(() =>
-                          mutate({
-                            action: "select",
-                            placeId: member.placeId,
-                            selected,
-                          }),
-                        );
-                      }}
-                    />
-                    Select {member.place.branch ?? member.place.displayName} for
-                    a day plan
-                  </label>
-                  <p>
-                    Selection is separate from saving. Day-plan generation is
-                    not available yet.
-                  </p>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(() =>
-                        mutate({ action: "remove", placeId: member.placeId }),
-                      )
-                    }
-                  >
-                    Remove {member.place.branch ?? member.place.displayName}
+                )}
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void run(() =>
+                      mutate({
+                        action: "update",
+                        title: editTitle,
+                        city: "Shanghai",
+                      }),
+                    );
+                  }}
+                >
+                  <label htmlFor="trip-title">Trip title</label>
+                  <input
+                    id="trip-title"
+                    required
+                    maxLength={120}
+                    value={editTitle}
+                    onChange={(event) => setEditTitle(event.target.value)}
+                  />
+                  <button type="submit" disabled={busy}>
+                    Update title
                   </button>
-                  <details>
-                    <summary>Saved sources and branch evidence</summary>
-                    {member.place.evidence.map((evidence) => (
-                      <p key={evidence.id}>
-                        <a
-                          href={evidence.sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
+                </form>
+                <InvitationControls
+                  key={`${trip.id}:${trip.dataKind}`}
+                  tripId={trip.id}
+                />
+                {!trip.savedPlaces.length && (
+                  <p>
+                    No saved Places yet. Browse discovery or confirm an imported
+                    branch.
+                  </p>
+                )}
+                {trip.savedPlaces.map((member) => (
+                  <article className="import-candidate" key={member.placeId}>
+                    <h3>{member.place.displayName}</h3>
+                    <p>
+                      {member.place.branch} · {member.place.address}
+                    </p>
+                    <label>
+                      <input
+                        type="checkbox"
+                        disabled={busy}
+                        checked={trip.selectedPlaceIds.includes(member.placeId)}
+                        onChange={(event) => {
+                          const selected = event.target.checked;
+                          void run(() =>
+                            mutate({
+                              action: "select",
+                              placeId: member.placeId,
+                              selected,
+                            }),
+                          );
+                        }}
+                      />
+                      Select {member.place.branch ?? member.place.displayName}{" "}
+                      for a day plan
+                    </label>
+                    <p>
+                      Selection is separate from saving. Day-plan generation is
+                      not available yet.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(() =>
+                          mutate({ action: "remove", placeId: member.placeId }),
+                        )
+                      }
+                    >
+                      Remove {member.place.branch ?? member.place.displayName}
+                    </button>
+                    <details>
+                      <summary>Saved sources and branch evidence</summary>
+                      {member.place.evidence.map((evidence) => (
+                        <p key={evidence.id}>
+                          <a
+                            href={evidence.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {evidence.attribution}
+                          </a>{" "}
+                          · {evidence.capturedAt.slice(0, 10)} ·{" "}
+                          {evidence.limits}
+                        </p>
+                      ))}
+                      {member.importedEvidence.map((evidence) => (
+                        <div
+                          key={`${evidence.importId}:${evidence.mentionId}`}
+                          className="import-attribution"
                         >
-                          {evidence.attribution}
-                        </a>{" "}
-                        · {evidence.capturedAt.slice(0, 10)} · {evidence.limits}
-                      </p>
-                    ))}
-                    {member.importedEvidence.map((evidence) => (
-                      <div
-                        key={`${evidence.importId}:${evidence.mentionId}`}
-                        className="import-attribution"
-                      >
-                        <ImportedEvidence
-                          evidence={{
-                            source: evidence.source,
-                            extraction: evidence.extraction,
-                            confirmation: evidence.confirmation,
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </details>
-                </article>
-              ))}
-            </section>
+                          <ImportedEvidence
+                            evidence={{
+                              source: evidence.source,
+                              extraction: evidence.extraction,
+                              confirmation: evidence.confirmation,
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </details>
+                  </article>
+                ))}
+              </section>
+              <CollaborationPanel
+                key={`decisions:${trip.id}:${trip.dataKind}`}
+                tripId={trip.id}
+                dataKind={trip.dataKind}
+                places={trip.savedPlaces.map((member) => member.place)}
+                owner
+                onTripChanged={() => load()}
+                onDenied={() => {
+                  void load();
+                }}
+              />
+            </>
           )}
         </>
       )}

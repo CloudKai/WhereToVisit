@@ -5,6 +5,7 @@ import type {
   InvitationManagement,
   SharedGuestTrip,
 } from "@/shared/contracts";
+import { CollaborationPanel } from "./collaboration";
 import { ImportedEvidence } from "./imported-evidence";
 
 class GuestRequestFailure extends Error {
@@ -322,9 +323,8 @@ export function GuestTrip({
             </p>
           )}
           <p>
-            You can read the shared shortlist. Suggestions, comments, votes and
-            day plans are not available yet. The organiser controls final
-            selections.
+            You can suggest Places, comment and vote. The organiser controls
+            final selections; day plans are not available yet.
           </p>
           <a href={`/shared-trips/${shared.trip.id}`} className="text-link">
             Return to this shared Trip
@@ -333,6 +333,20 @@ export function GuestTrip({
             Refresh shared Trip
           </button>
           <ParticipantList participants={shared.participants} />
+          <CollaborationPanel
+            key={`${shared.trip.id}:${shared.trip.dataKind}`}
+            tripId={shared.trip.id}
+            dataKind={shared.trip.dataKind}
+            places={shared.trip.savedPlaces.map((member) => member.place)}
+            onDenied={() => {
+              setShared(null);
+              setAvailable(false);
+              setError(
+                "Guest access is unavailable. Ask the organiser for a current invitation.",
+              );
+              retry.current = load;
+            }}
+          />
           {!shared.trip.savedPlaces.length && <p>No saved Places yet.</p>}
           {shared.trip.savedPlaces.map((member) => (
             <article key={member.placeId} className="import-candidate">

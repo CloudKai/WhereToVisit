@@ -58,3 +58,11 @@ export const guestSessions = sqliteTable(
   },
   (table) => [index("guest_sessions_token").on(table.tokenDigest)],
 );
+
+export const tripCollaboration = sqliteTable("trip_collaboration", {
+  id: text("id").primaryKey(),
+  tripId: text("trip_id")
+    .notNull()
+    .references(() => trips.id, { onDelete: "cascade" }),
+  document: text("document").notNull(),
+});

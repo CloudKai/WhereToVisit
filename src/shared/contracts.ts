@@ -329,3 +329,21 @@ export type SharedGuestTrip = {
   participant: GuestParticipant;
   participants: GuestParticipant[];
 };
+
+export type Collaboration = {
+  actorId: string;
+  participants: GuestParticipant[];
+  comments: { id: string; actorId: string; placeId: string; text: string }[];
+  suggestions: {
+    id: string;
+    actorId: string;
+    name: string;
+    place: Place | null;
+    state: "pending" | "accepted" | "rejected";
+  }[];
+  votes: {
+    actorId: string;
+    placeId: string;
+    choice: "must-go" | "interested" | "skip";
+  }[];
+};
