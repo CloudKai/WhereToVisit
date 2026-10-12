@@ -13,7 +13,7 @@ async function stop(child: ChildProcess | null) {
   process.kill(-child.pid, "SIGTERM");
   await ended;
 }
-test("retained fixture day drafts and receipts stay inaccessible in production and opt-out development", async ({
+test("retained fixture day drafts, edited plans and receipts stay inaccessible in production and opt-out development", async ({
   request,
   playwright,
 }, testInfo) => {
@@ -154,6 +154,19 @@ test("retained fixture day drafts and receipts stay inaccessible in production a
         })
       ).status(),
     ).toBe(200);
+    const editingPayload = {
+      operationId: randomUUID(),
+      expectedRevision: 1,
+      stops: [{ placeId: "fictional-cafe-east", desiredArrivalMinute: 600 }],
+    };
+    expect(
+      (
+        await request.patch(`/api/trips/${trip.id}/generated-day-plan`, {
+          headers,
+          data: editingPayload,
+        })
+      ).status(),
+    ).toBe(200);
     const generatedBefore = (
       await (
         await request.get(`/api/trips/${trip.id}/generated-day-plan`)
@@ -201,6 +214,18 @@ test("retained fixture day drafts and receipts stay inaccessible in production a
       );
       await ready();
       for (const response of [
+        await request.patch(`/api/trips/${trip.id}/generated-day-plan`, {
+          headers,
+          data: editingPayload,
+        }),
+        await request.patch(`/api/trips/${trip.id}/generated-day-plan`, {
+          headers,
+          data: {
+            ...editingPayload,
+            operationId: randomUUID(),
+            expectedRevision: 2,
+          },
+        }),
         await request.get(`/api/trips/${trip.id}/day-plan`),
         await request.get(`/api/trips/${trip.id}/generated-day-plan`),
         await request.post(`/api/trips/${trip.id}/generated-day-plan`, {
@@ -276,6 +301,21 @@ test("retained fixture day drafts and receipts stay inaccessible in production a
         await request.post(`/api/trips/${trip.id}/generated-day-plan`, {
           headers,
           data: generationPayload,
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await (
+          await request.get(`/api/trips/${trip.id}/generated-day-plan`)
+        ).json()
+      ).generatedDayPlan,
+    ).toEqual(generatedBefore);
+    expect(
+      (
+        await request.patch(`/api/trips/${trip.id}/generated-day-plan`, {
+          headers,
+          data: editingPayload,
         })
       ).status(),
     ).toBe(200);

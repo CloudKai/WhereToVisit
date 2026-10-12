@@ -32,12 +32,21 @@ function catalogueNeighbourhoods(places: CatalogueResult["places"]) {
 export function Discovery({
   initialResult,
   mapFixtureEnabled = false,
+  initialPlaceId,
 }: {
   initialResult: Result;
   mapFixtureEnabled?: boolean;
+  initialPlaceId?: string;
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectionRevision, setSelectionRevision] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialResult.status === "available" &&
+      initialResult.data.places.some((place) => place.id === initialPlaceId)
+      ? (initialPlaceId ?? null)
+      : null,
+  );
+  const [selectionRevision, setSelectionRevision] = useState(
+    initialPlaceId ? 1 : 0,
+  );
   const [view, setView] = useState("both");
   const [pendingArea, setPendingArea] = useState<MapArea>(initialFixtureArea);
   const [searchedArea, setSearchedArea] = useState<MapArea | null>(null);

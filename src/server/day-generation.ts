@@ -31,6 +31,7 @@ function propose(
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,
     dataKind: trip.dataKind,
+    manuallyEdited: false,
     operatingHours: [],
     assumptions: [
       "Saved shortlist order is the proposed order; proximity is unverified.",
@@ -40,6 +41,7 @@ function propose(
       "Uses only your confirmed selected branches in saved shortlist order. Votes guide your selection and do not guarantee feasibility.",
     stops: ids.map((placeId) => ({
       placeId,
+      desiredArrivalMinute: null,
       visitTimeAssumption: null,
       arrivalMinute: null,
       departureMinute: null,
@@ -138,6 +140,7 @@ export function dayGenerationOperation(
             "expectedRevision",
             "requestRevision",
             "selectionRevision",
+            "replaceEdited",
           ].includes(key),
         )
       )
@@ -163,6 +166,20 @@ export function dayGenerationOperation(
         throw new TripFailure(
           "generation-conflict",
           "The plan, request or chosen Places changed. Reload, review and save current inputs before generation.",
+          409,
+        );
+      if (
+        input.replaceEdited !== undefined &&
+        typeof input.replaceEdited !== "boolean"
+      )
+        throw new TripFailure(
+          "invalid-generation",
+          "Replacement choice must be explicit.",
+        );
+      if (state.plan?.manuallyEdited && input.replaceEdited !== true)
+        throw new TripFailure(
+          "edited-plan-confirmation",
+          "This plan has manual edits. Explicitly choose to replace the edited plan before regeneration.",
           409,
         );
       const selected = draftState.draft.request.selectedPlaceIds;

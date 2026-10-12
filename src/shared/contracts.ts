@@ -250,6 +250,7 @@ export type DayPlan = {
   createdAt: string;
   updatedAt: string;
   dataKind: "real" | "fixture";
+  manuallyEdited?: boolean;
   operatingHours: {
     placeId: string;
     visitDate: string;
@@ -265,6 +266,7 @@ export type DayPlan = {
   explanation: string;
   stops: {
     placeId: string;
+    desiredArrivalMinute?: number | null;
     visitTimeAssumption: string | null;
     arrivalMinute: number | null;
     departureMinute: number | null;

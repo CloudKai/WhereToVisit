@@ -1,7 +1,12 @@
 import { Discovery } from "@/components/discovery";
 import { queryCatalogue } from "@/server/catalogue";
 export const dynamic = "force-dynamic";
-export default async function Discover() {
+export default async function Discover({
+  searchParams,
+}: {
+  searchParams: Promise<{ placeId?: string }>;
+}) {
+  const { placeId } = await searchParams;
   const result = await queryCatalogue({ city: "Shanghai" });
   return (
     <section className="page-section">
@@ -12,6 +17,7 @@ export default async function Discover() {
       </p>
       <Discovery
         initialResult={result}
+        initialPlaceId={placeId}
         mapFixtureEnabled={
           process.env.NODE_ENV === "development" &&
           process.env.ENABLE_DEVELOPMENT_MAP_FIXTURE === "1"

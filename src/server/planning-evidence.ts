@@ -352,3 +352,131 @@ export function applyPlanningEvidence(plan: DayPlan, evidence: Evidence) {
       "Selected Places do not all fit; inspect unscheduled reasons and revise inputs.",
     );
 }
+
+export function applyEditedPlanningEvidence(
+  plan: DayPlan,
+  evidence: Evidence | null,
+) {
+  plan.operatingHours = evidence
+    ? evidence.hours.map(({ evidence: sourceExplanation, ...hours }) => ({
+        ...hours,
+        sourceExplanation,
+        visitDate: plan.request.visitDate,
+        timeZone: "Asia/Shanghai",
+        provider: evidence.provider,
+        retrievedAt: evidence.retrievedAt,
+      }))
+    : [];
+  plan.travelLegs = plan.stops.slice(1).map((stop, index) => ({
+    fromPlaceId: plan.stops[index].placeId,
+    toPlaceId: stop.placeId,
+    requestedMode: plan.request.mode,
+    actualSubmode: null,
+    provider: evidence?.provider ?? null,
+    retrievedAt: evidence?.retrievedAt ?? null,
+    resultKind: null,
+    durationSeconds: null,
+    distanceMetres: null,
+    outcome: evidence ? "no-route" : "permission-unqualified",
+    apiVersion: evidence?.apiVersion ?? null,
+    coordinateProvenance: evidence?.coordinateProvenance ?? null,
+    visitTimeContext: `${plan.request.visitDate} Asia/Shanghai; ${evidence ? "hypothetical future-day fixture" : "no qualified departure-time estimate"}`,
+    ...evidence?.legs.find(
+      (leg) =>
+        leg.fromPlaceId === plan.stops[index].placeId &&
+        leg.toPlaceId === stop.placeId,
+    ),
+  }));
+  plan.warnings = plan.warnings.filter((warning) =>
+    ["Budget recorded", "Dietary preference", "Start area"].some((prefix) =>
+      warning.startsWith(prefix),
+    ),
+  );
+  plan.warnings.push(
+    "User-desired arrivals are arrangements, not provider facts. Review warnings before following this edited day.",
+  );
+  if (evidence)
+    plan.warnings.push(
+      "Fictional provider evidence proves application behavior only; no real routes or operating hours are qualified.",
+    );
+  else
+    plan.warnings.push(
+      "Opening hours and current operation are unknown; real mode-specific routes are permission-unqualified.",
+    );
+  const hoursFor = (id: string) =>
+    evidence?.hours.find((hours) => hours.placeId === id);
+  for (const stop of plan.stops) {
+    const hours = hoursFor(stop.placeId);
+    stop.hoursEvidence = hours?.evidence ?? null;
+    if (hours?.closed)
+      plan.warnings.push(
+        `Edited stop ${stop.placeId}: evidenced closure conflicts with this day.`,
+      );
+    if (
+      hours &&
+      stop.desiredArrivalMinute !== null &&
+      stop.desiredArrivalMinute !== undefined &&
+      (stop.desiredArrivalMinute < hours.opensMinute ||
+        stop.desiredArrivalMinute >= hours.closesMinute)
+    )
+      plan.warnings.push(
+        `Edited stop ${stop.placeId}: desired arrival is outside the evidenced opening interval.`,
+      );
+  }
+  if (plan.unscheduledPlaces.length)
+    plan.warnings.push(
+      "Unscheduled selected Places remain retained for review; editing does not restore prior exclusions.",
+    );
+  if (
+    !plan.stops.length ||
+    plan.stops.some(
+      (stop) => !hoursFor(stop.placeId) || hoursFor(stop.placeId)?.closed,
+    ) ||
+    plan.travelLegs.some(
+      (leg) => leg.outcome !== "available" || leg.durationSeconds === null,
+    )
+  ) {
+    plan.warnings.push(
+      "Missing hours or unavailable travel legs: timing and one-day feasibility remain unresolved after editing.",
+    );
+    return;
+  }
+  const dwell =
+    plan.request.pace === "relaxed"
+      ? 60
+      : plan.request.pace === "busy"
+        ? 30
+        : 45;
+  plan.assumptions.push(
+    "Assumed Shanghai planning window 09:00–18:00; user-desired times do not verify feasibility.",
+    `Assumed ${dwell} minute visit per stop; no start-area journey, taxi wait or fare is assumed.`,
+  );
+  let cursor = 540;
+  for (const [index, stop] of plan.stops.entries()) {
+    const hours = hoursFor(stop.placeId) as Hours;
+    const earliest =
+      cursor +
+      (index
+        ? Math.ceil((plan.travelLegs[index - 1].durationSeconds as number) / 60)
+        : 0);
+    const arrival =
+      stop.desiredArrivalMinute ?? Math.max(earliest, hours.opensMinute);
+    const departure = arrival + dwell;
+    if (arrival < earliest)
+      plan.warnings.push(
+        `Edited stop ${stop.placeId}: desired arrival conflicts with preceding travel/dwell or the assumed day start.`,
+      );
+    if (arrival < hours.opensMinute || departure > hours.closesMinute)
+      plan.warnings.push(
+        `Edited stop ${stop.placeId}: visit conflicts with evidenced opening hours.`,
+      );
+    if (arrival < 540 || departure > 1080)
+      plan.warnings.push(
+        `Edited stop ${stop.placeId}: visit conflicts with the assumed 09:00–18:00 day window.`,
+      );
+    stop.arrivalMinute = arrival;
+    stop.departureMinute = departure;
+    stop.visitTimeAssumption = `${dwell} minute assumed visit; verify suitability`;
+    cursor = departure;
+  }
+}

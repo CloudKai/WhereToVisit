@@ -8,6 +8,7 @@ export default defineConfig({
     "invitations-production.spec.ts",
     "day-plans-production.spec.ts",
     "day-generation-production.spec.ts",
+    "day-editing-production.spec.ts",
   ],
   fullyParallel: false,
   workers: 1,

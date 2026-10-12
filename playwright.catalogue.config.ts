@@ -29,6 +29,7 @@ export default defineConfig({
     "collaboration.spec.ts",
     "day-plans.spec.ts",
     "day-generation.spec.ts",
+    "day-editing.spec.ts",
   ],
   workers: 1,
   fullyParallel: false,

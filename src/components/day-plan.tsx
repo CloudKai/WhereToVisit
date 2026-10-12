@@ -82,6 +82,7 @@ export function DayPlanInputs({
   const [dietaryNeeds, setDietaryNeeds] = useState("");
   const [pace, setPace] = useState<DayPlanRequest["pace"]>(null);
   const [mode, setMode] = useState<DayPlanRequest["mode"]>("walking-transit");
+  const [replaceEdited, setReplaceEdited] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -316,44 +317,98 @@ export function DayPlanInputs({
         </form>
       )}
       {state?.draft && (
-        <button
-          type="button"
-          disabled={busy || state.needsReview}
-          onClick={() => {
-            const input = {
-              operationId: crypto.randomUUID(),
-              expectedRevision: generated.plan?.revision ?? 0,
-              requestRevision: state.draft?.revision,
-              selectionRevision: state.selectionRevision,
-            };
-            void run(async () => {
-              const response = await fetch(
-                `/api/trips/${trip.id}/generated-day-plan`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(input),
-                  cache: "no-store",
-                },
-              );
-              const result = await response.json();
-              if (!response.ok)
-                throw new DraftFailure(
-                  result.error?.message ?? "Generation unavailable.",
-                  response.status,
+        <>
+          {replaceEdited && (
+            <div role="alert" aria-label="Replace manual edits">
+              <p>
+                Regeneration will replace the edited order, removed stops and
+                desired times with a newly generated plan. The saved plan is
+                retained if generation fails.
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setReplaceEdited(false)}
+              >
+                Keep edited day plan
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={busy || state.needsReview}
+            onClick={() => {
+              if (generated.plan?.manuallyEdited && !replaceEdited) {
+                setReplaceEdited(true);
+                return;
+              }
+              const input = {
+                operationId: crypto.randomUUID(),
+                expectedRevision: generated.plan?.revision ?? 0,
+                requestRevision: state.draft?.revision,
+                selectionRevision: state.selectionRevision,
+                ...(replaceEdited ? { replaceEdited: true } : {}),
+              };
+              void run(async () => {
+                const response = await fetch(
+                  `/api/trips/${trip.id}/generated-day-plan`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(input),
+                    cache: "no-store",
+                  },
                 );
-              setGenerated(result.generatedDayPlan);
-              setNotice(
-                "Day plan confirmed saved. Review warnings before visiting.",
-              );
-            });
-          }}
-        >
-          Generate day plan
-        </button>
+                const result = await response.json();
+                if (!response.ok)
+                  throw new DraftFailure(
+                    result.error?.message ?? "Generation unavailable.",
+                    response.status,
+                  );
+                setGenerated(result.generatedDayPlan);
+                setReplaceEdited(false);
+                setNotice(
+                  "Day plan confirmed saved. Review warnings before visiting.",
+                );
+              });
+            }}
+          >
+            {replaceEdited ? "Replace edited day plan" : "Generate day plan"}
+          </button>
+        </>
       )}
       <GeneratedDayPlan
         state={generated}
+        busy={busy}
+        onEdit={(stops) => {
+          const input = {
+            operationId: crypto.randomUUID(),
+            expectedRevision: generated.plan?.revision ?? 0,
+            stops,
+          };
+          void run(async () => {
+            const response = await fetch(
+              `/api/trips/${trip.id}/generated-day-plan`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(input),
+                cache: "no-store",
+              },
+            );
+            const result = await response.json();
+            if (!response.ok)
+              throw new DraftFailure(
+                result.error?.message ?? "Editing unavailable.",
+                response.status,
+              );
+            setGenerated(result.generatedDayPlan);
+            setReplaceEdited(false);
+            setNotice(
+              "Day plan edits confirmed saved. Review warnings before visiting.",
+            );
+          });
+        }}
         places={trip.savedPlaces.map((member) => member.place)}
       />
     </section>

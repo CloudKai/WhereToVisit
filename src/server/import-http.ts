@@ -28,17 +28,17 @@ export function requireSameOrigin(request: Request) {
 export function requestIp(request: Request) {
   return request.headers.get("x-forwarded-for") ?? "local-direct";
 }
-export async function boundedJson(request: Request) {
+export async function boundedJson(request: Request, maximumBytes = 4096) {
   if (
     !/^application\/json(?:;|$)/i.test(
       request.headers.get("content-type") ?? "",
     )
   )
     throw new ImportFailure("invalid-request", "Use JSON input.");
-  if (Number(request.headers.get("content-length") ?? 0) > 4096)
+  if (Number(request.headers.get("content-length") ?? 0) > maximumBytes)
     throw new ImportFailure(
       "input-too-large",
-      "Import request exceeds 4096 bytes.",
+      `JSON request exceeds ${maximumBytes} bytes.`,
     );
   const reader = request.body?.getReader();
   if (!reader)
@@ -55,11 +55,11 @@ export async function boundedJson(request: Request) {
       const next = await reader.read();
       if (next.done) break;
       size += next.value.length;
-      if (size > 4096) {
+      if (size > maximumBytes) {
         await reader.cancel();
         throw new ImportFailure(
           "input-too-large",
-          "Import request exceeds 4096 bytes.",
+          `JSON request exceeds ${maximumBytes} bytes.`,
         );
       }
       chunks.push(next.value);
