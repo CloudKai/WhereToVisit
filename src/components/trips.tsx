@@ -81,8 +81,9 @@ export function TripDashboard({
       }
     }
   }
-  async function load(pendingId = intentId) {
+  async function load(pendingId = intentId, isCurrent = () => true) {
     const response = await fetch("/api/trips", { cache: "no-store" });
+    if (!isCurrent()) return;
     if (response.status === 401) {
       setUser(null);
       setTrips([]);
@@ -90,6 +91,7 @@ export function TripDashboard({
       return;
     }
     const value = await response.json();
+    if (!isCurrent()) return;
     if (!response.ok)
       throw new Error(value.error?.message ?? "Trips are unavailable.");
     setUser(value.user);
@@ -99,8 +101,10 @@ export function TripDashboard({
         ? current
         : (value.trips[0]?.id ?? ""),
     );
-    if (pendingId)
-      setIntent((await json(`/api/trip-save-intents/${pendingId}`)).intent);
+    if (pendingId) {
+      const pending = await json(`/api/trip-save-intents/${pendingId}`);
+      if (isCurrent()) setIntent(pending.intent);
+    }
   }
   // biome-ignore lint/correctness/useExhaustiveDependencies: initial request helpers intentionally use the route values only.
   useEffect(() => {
@@ -133,12 +137,12 @@ export function TripDashboard({
             if (active) {
               setIntentId("");
               setIntent(null);
-              await load("");
+              await load("", () => active);
               throw failure;
             }
           }
         }
-        if (active) await load(pending);
+        if (active) await load(pending, () => active);
       },
       () => active,
     );

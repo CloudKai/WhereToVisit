@@ -688,3 +688,83 @@ test("leaving a pending save URL loads the current Trips page without waiting fo
     release();
   }
 });
+
+test("an obsolete initial account response cannot replace a confirmed current Trip", async ({
+  page,
+}) => {
+  writeFileSync(
+    ".data/catalogue-scenario.json",
+    JSON.stringify(catalogueFixture()),
+  );
+  expect(
+    (
+      await page.request.post("/api/auth/sign-up/email", {
+        headers,
+        data: {
+          name: "Current organiser",
+          email: `current-${randomUUID()}@example.invalid`,
+          password: "Current-password-123",
+        },
+      })
+    ).status(),
+  ).toBe(200);
+  let reached: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let first = true;
+  await page.route("**/api/trips", async (route) => {
+    if (route.request().method() !== "GET" || !first) return route.continue();
+    first = false;
+    const response = await route.fetch();
+    reached();
+    await released;
+    await route.fulfill({ response });
+  });
+  try {
+    await page.goto("/trips?placeId=fictional-cafe-east");
+    await held;
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Trips", exact: true })
+      .click();
+    await expect(page).toHaveURL("http://127.0.0.1:8180/trips");
+    await page.getByLabel("New Trip title").fill("Confirmed current Trip");
+    await page
+      .getByRole("button", { name: "Create Trip", exact: true })
+      .click();
+    const current = page.getByRole("heading", {
+      name: "Confirmed current Trip",
+      exact: true,
+    });
+    await expect(current).toBeVisible();
+    const id = await page.getByLabel("Your Trip", { exact: true }).inputValue();
+    const obsolete = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/trips") &&
+        response.request().method() === "GET",
+    );
+    release();
+    await obsolete;
+    // Let the delivered obsolete response reach the rendered browser boundary.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    expect(
+      (await (await page.request.get(`/api/trips/${id}`)).json()).trip.title,
+    ).toBe("Confirmed current Trip");
+    await expect(current).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Pending save" }),
+    ).toHaveCount(0);
+  } finally {
+    release();
+  }
+});
