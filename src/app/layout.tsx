@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PrimaryNavigation } from "@/components/primary-navigation";
 import "./globals.css";
+
 export const metadata: Metadata = {
-  title: "WhereToVisit — Inspiration to a day out",
+  title: "WhereToVisit — cafés and tables worth travelling for",
   description:
-    "Discover Shanghai food and cafés, understand why they are recommended, and bring your inspiration.",
+    "Search any destination and see recommended cafés and restaurants, with the reason each one is worth a visit and where the recommendation comes from.",
 };
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -22,15 +23,46 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </span>
               WhereToVisit
             </Link>
-            <PrimaryNavigation />
+            <nav aria-label="Primary">
+              <Link href="/">Search</Link>
+              <Link href="/about">How it works</Link>
+            </nav>
           </div>
         </header>
         <main id="main" tabIndex={-1}>
           {children}
         </main>
-        <footer>
-          <span>WhereToVisit</span>
-          <span>Made for your next day out.</span>
+        <footer className="site-footer">
+          <p>
+            Recommendations from{" "}
+            <a
+              href="https://www.wikivoyage.org/"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Wikivoyage
+            </a>{" "}
+            (CC BY-SA 4.0). Place data ©{" "}
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              OpenStreetMap contributors
+            </a>{" "}
+            (ODbL), served by{" "}
+            <a
+              href="https://www.geoapify.com/"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Geoapify
+            </a>
+            .
+          </p>
+          <p>
+            Always confirm hours and addresses with the venue before you travel.
+          </p>
         </footer>
       </body>
     </html>
