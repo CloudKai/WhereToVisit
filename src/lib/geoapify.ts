@@ -1,4 +1,5 @@
-import { CATEGORIES, CATEGORY_INFO } from "./categories.ts";
+import { CATEGORIES, CATEGORY_INFO, guessCategory } from "./categories.ts";
+import type { Candidate } from "./extract-types.ts";
 import { isLat, isLon } from "./geo.ts";
 import { getJson } from "./http.ts";
 import {
@@ -345,4 +346,97 @@ export async function suggestDestinations(
     timeoutMs: 6000,
   });
   return normalizeSuggestions(data);
+}
+
+// ---------- turning a place name into coordinates ----------
+
+type GeocodeFeature = {
+  properties?: {
+    name?: string;
+    formatted?: string;
+    address_line1?: string;
+    lat?: number;
+    lon?: number;
+    result_type?: string;
+    rank?: { confidence?: number };
+  };
+  geometry?: { coordinates?: number[] };
+};
+
+/** Results too coarse to be "a place": whole countries, regions, postcodes. */
+const TOO_COARSE = new Set([
+  "country",
+  "state",
+  "county",
+  "postcode",
+  "region",
+]);
+/** Close, but not an exact venue. */
+const APPROXIMATE = new Set([
+  "street",
+  "suburb",
+  "district",
+  "city",
+  "locality",
+  "unknown",
+]);
+
+/** Converts Geoapify geocoding results to candidates, best first. */
+export function normalizeGeocode(data: unknown): Candidate[] {
+  const features = (data as { features?: GeocodeFeature[] } | null)?.features;
+  if (!Array.isArray(features)) return [];
+  const out: Candidate[] = [];
+  const seen = new Set<string>();
+  for (const feature of features) {
+    const p = feature.properties;
+    if (!p) continue;
+    const kind = p.result_type ?? "unknown";
+    if (TOO_COARSE.has(kind)) continue;
+    const coords = feature.geometry?.coordinates;
+    const lat = p.lat ?? coords?.[1];
+    const lon = p.lon ?? coords?.[0];
+    if (lat === undefined || lon === undefined || !isLat(lat) || !isLon(lon))
+      continue;
+    const address = p.formatted?.trim();
+    const label = (p.name ?? p.address_line1 ?? address?.split(",")[0])?.trim();
+    if (!address || !label) continue;
+    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const confidence =
+      typeof p.rank?.confidence === "number"
+        ? Math.min(1, Math.max(0, p.rank.confidence))
+        : 0;
+    out.push({
+      label,
+      address,
+      lat,
+      lon,
+      kind,
+      confidence,
+      approximate: APPROXIMATE.has(kind),
+      category: guessCategory(`${label} ${address}`),
+    });
+  }
+  return out.slice(0, 3);
+}
+
+/** Looks up a place name, optionally narrowed by an area such as a city. */
+export async function geocodePlace(
+  name: string,
+  hint: string | undefined,
+  apiKey: string,
+): Promise<Candidate[]> {
+  const url = new URL(`${BASE}/v1/geocode/search`);
+  url.search = new URLSearchParams({
+    text: hint ? `${name}, ${hint}` : name,
+    limit: "3",
+    lang: "en",
+    apiKey,
+  }).toString();
+  const data = await getJson<unknown>("Geoapify", url.toString(), {
+    revalidate: 7 * 86400,
+    timeoutMs: 8000,
+  });
+  return normalizeGeocode(data);
 }

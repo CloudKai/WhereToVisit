@@ -29,6 +29,19 @@ reasons, the map and multi-day routing, and companion voting.
 - **Never empty-handed.** If a city search finds fewer than 10 places to eat, it
   automatically searches again out to 10 km and tells you it did. A map area you
   chose yourself is never widened.
+- **From links (`/links`).** Add saved TikTok / Instagram / Xiaohongshu posts. Each
+  link is kept as the _source_; you paste the post's caption (or type place names,
+  one per line). The AI finds place names in that text (a name is dropped unless it
+  is actually written there), Geoapify looks up where each is, and the places show
+  on a map with their source. For each place you check the match (or say "none of
+  these"), then add it to your trip. These apps don't let other apps read posts
+  (Instagram's embed terms limit that data to displaying the post), so nothing
+  reads Instagram or Xiaohongshu; only if you set `TIKTOK_OEMBED=1` will a TikTok
+  caption be read automatically through TikTok's public embed endpoint -- review
+  its terms first. Pasted text is sent to OpenAI; without a key, short typed lines
+  still work.
+- **Header tab.** After a search, the first tab shows that place (and returns to its
+  results); only the logo goes back to the search box.
 - **Social posts, honestly.** Each place has a "Social posts & search" panel:
   links that open TikTok, Instagram and Xiaohongshu's own search for that place,
   and links **visitors have shared** ("Seen on TikTok ×2"). There is no automatic

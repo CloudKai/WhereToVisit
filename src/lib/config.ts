@@ -22,6 +22,11 @@ export type Config = {
   wikimediaContact?: string;
   /** Visitors may share TikTok/Instagram/Xiaohongshu post links for places. */
   communityPosts: boolean;
+  /**
+   * Read the caption of a TikTok link through TikTok's public embed endpoint.
+   * Off by default: review TikTok's terms before switching it on.
+   */
+  tiktokOembed: boolean;
 };
 
 function clean(value: string | undefined): string | undefined {
@@ -48,6 +53,9 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): Config {
     openaiModel: clean(env.OPENAI_MODEL) ?? "gpt-5.4-mini",
     llmDailyCap: Number.isFinite(cap) && cap >= 0 ? cap : 150,
     wikimediaContact: clean(env.WIKIMEDIA_CONTACT),
+    tiktokOembed: ["1", "true", "on"].includes(
+      (env.TIKTOK_OEMBED ?? "").trim().toLowerCase(),
+    ),
     communityPosts: !["0", "false", "off"].includes(
       (env.COMMUNITY_POSTS ?? "").trim().toLowerCase(),
     ),

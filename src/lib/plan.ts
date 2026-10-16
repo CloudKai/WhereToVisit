@@ -1,4 +1,5 @@
 import { CATEGORY_INFO, categoryFromToken } from "./categories.ts";
+import type { Candidate } from "./extract-types.ts";
 import { isLat, isLon } from "./geo.ts";
 import type { Mode } from "./routing.ts";
 import type { Category, Place } from "./types.ts";
@@ -85,6 +86,20 @@ export function placeToStop(place: Place): Stop | null {
     dwell: defaultDwell(place.category),
     address: clip(place.address, 160),
     hours: clip(place.hours, 120),
+  };
+}
+
+/** A trip stop for a place found from a social post. */
+export function candidateToStop(candidate: Candidate): Stop | null {
+  if (!isLat(candidate.lat) || !isLon(candidate.lon)) return null;
+  return {
+    id: stopId(candidate.lat, candidate.lon),
+    name: clip(candidate.label, 80) ?? "Place",
+    lat: candidate.lat,
+    lon: candidate.lon,
+    category: candidate.category,
+    dwell: defaultDwell(candidate.category),
+    address: clip(candidate.address, 160),
   };
 }
 

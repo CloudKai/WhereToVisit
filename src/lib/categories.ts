@@ -136,3 +136,36 @@ export function matchesFilter(
 export function categoriesForFilter(filter: CategoryFilter): Category[] {
   return CATEGORIES.filter((category) => matchesFilter(category, filter));
 }
+
+// ---------- guessing a type from a name ----------
+
+const GUESS: [Category, RegExp][] = [
+  [
+    "cafe",
+    /\b(caf[eé]s?|coffee|espresso|roaster(?:y|s)?|tea\s?house|teahouse|bakery|patisserie|boulangerie)\b|咖啡|カフェ|珈琲|茶馆|茶屋|面包/i,
+  ],
+  [
+    "museum",
+    /\b(museums?|galler(?:y|ies)|theat(?:re|er)|opera|concert hall|planetarium|aquarium)\b|博物馆|美术馆|美術館|博物館/i,
+  ],
+  [
+    "park",
+    /\b(parks?|gardens?|botanical|nature reserve|forest|beach|lake|waterfall|promenade)\b|公园|公園|花园|庭園/i,
+  ],
+  [
+    "shopping",
+    /\b(malls?|shopping|market|bazaar|department store|boutique|outlet|plaza)\b|商场|商城|市场|百货|デパート/i,
+  ],
+  [
+    "food",
+    /\b(restaurants?|noodles?|ramen|dumplings?|pizza|bbq|grill|steak|sushi|bistro|diner|kitchen|bar|pub|brasserie|eatery|hotpot|dim sum|izakaya|taqueria)\b|餐厅|餐廳|火锅|面馆|烧烤|寿司|ラーメン|居酒屋/i,
+  ],
+];
+
+/** A best guess from a place's name; attractions are the default for unknown names. */
+export function guessCategory(text: string): Category {
+  for (const [category, pattern] of GUESS) {
+    if (pattern.test(text)) return category;
+  }
+  return "attraction";
+}

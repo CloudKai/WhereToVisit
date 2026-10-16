@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { type CategoryFilter, FILTERS } from "@/lib/categories";
 import { AREA_OPTIONS, exploreHref, nearestArea } from "@/lib/destination";
 import { countFor, FILTERED_VISIBLE, selectVisible } from "@/lib/listing";
 import type { Destination, Place } from "@/lib/types";
 import type { MapMarker } from "./map";
+import { useLastSearch } from "./last-search";
 import { PlaceCard } from "./place-card";
 import { PlacesMap } from "./places-map";
 import { SocialProvider } from "./social-provider";
@@ -33,6 +34,13 @@ export function ExploreResults({
 }: Props) {
   const [filter, setFilter] = useState<CategoryFilter>(initialFilter);
   const [expanded, setExpanded] = useState(false);
+  const { remember } = useLastSearch();
+
+  // The header tab names this place and leads back here, with the current filter.
+  const hereHref = exploreHref(destination, filter);
+  useEffect(() => {
+    remember({ name: destination.name, href: hereHref });
+  }, [remember, destination.name, hereHref]);
 
   const lists = useMemo(() => ({ editorPicks, nearby }), [editorPicks, nearby]);
   // Every place on the page, so shared links load in one request.

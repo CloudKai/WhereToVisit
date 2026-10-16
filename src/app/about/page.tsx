@@ -82,6 +82,18 @@ export default function About() {
         not as a ranking.
       </p>
 
+      <h2>Turning posts into places</h2>
+      <p>
+        The “From links” page finds places mentioned in posts you saved. TikTok,
+        Instagram and Xiaohongshu don’t let other apps read their posts, so the
+        link is kept as your source and you paste the caption or type the place
+        names. We use AI only to pick place names out of that text — and any
+        name that isn’t actually written there is thrown away — then look up
+        where each place is. Matches can be wrong, so you confirm each one
+        before it goes into your trip. The text you paste is sent to OpenAI, and
+        place names to Geoapify.
+      </p>
+
       <h2>Photos</h2>
       <p>
         Photos come from Wikimedia Commons and always link to their file page

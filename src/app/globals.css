@@ -1485,3 +1485,150 @@ summary {
 .chips li.social-xiaohongshu {
   background: #e0243c;
 }
+
+/* ---------- From links ---------- */
+.links-form {
+  max-width: 720px;
+  display: grid;
+  gap: 14px;
+}
+.links-honest {
+  padding: 12px 14px;
+  background: #f3ece0;
+  border-radius: 14px;
+}
+.post-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 14px 16px 12px;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.post-row legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  font-weight: 700;
+}
+.post-row input,
+.post-row textarea,
+.hint-field input {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  width: 100%;
+}
+.post-row textarea {
+  resize: vertical;
+}
+.post-row input[aria-invalid="true"] {
+  border-color: #a3281a;
+}
+.form-error {
+  color: #a3281a;
+  margin: 0;
+}
+.links-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+}
+.hint-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  flex: 1 1 220px;
+}
+.links-results {
+  margin-top: 36px;
+}
+.entry-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.entry {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  font-size: 0.92rem;
+}
+.entry-message {
+  display: block;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.entry-no-text,
+.entry-bad-link,
+.entry-no-places {
+  border-color: #f0d9a8;
+  background: #fff9ec;
+}
+.links-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 18px;
+}
+.found-list {
+  display: grid;
+  gap: 14px;
+}
+.candidates {
+  border: 0;
+  padding: 0;
+  margin: 10px 0 0;
+  display: grid;
+  gap: 6px;
+}
+.candidate {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.candidate.on {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgb(23 99 95 / 18%);
+}
+.tag-approx {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8a6212;
+}
+
+.site-header nav .place-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.place-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.site-header nav a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 700;
+}

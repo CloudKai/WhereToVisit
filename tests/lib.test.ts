@@ -183,3 +183,76 @@ test("nearestArea highlights the closest search-area option", async () => {
   );
   assert.equal(nearestArea(9500).radiusM, 10000);
 });
+
+test("the header tab only trusts same-site results links", async () => {
+  const { isResultsHref, parseLastSearch } =
+    await import("../src/lib/last-search.ts");
+  const { exploreHref } = await import("../src/lib/destination.ts");
+
+  // Links the app itself builds always pass, including unicode names and map areas.
+  for (const href of [
+    exploreHref({
+      name: "Shanghai",
+      country: "China",
+      lat: 31.23,
+      lon: 121.47,
+      radiusM: 6000,
+    }),
+    exploreHref(
+      { name: "上海", lat: 31.23, lon: 121.47, radiusM: 6000 },
+      "park",
+    ),
+    exploreHref(
+      {
+        name: "São Paulo",
+        lat: -23.5,
+        lon: -46.6,
+        radiusM: 6000,
+        bounds: { south: -23.6, west: -46.7, north: -23.5, east: -46.6 },
+      },
+      "eat",
+    ),
+  ]) {
+    assert.ok(isResultsHref(href), href);
+  }
+  for (const bad of [
+    "https://evil.example/explore?x=1",
+    "//evil.example/explore?x=1",
+    "/explore?x=<script>",
+    "/plan?x=1",
+    "javascript:alert(1)",
+    "/explore?" + "a".repeat(700),
+    "/explore?x=1\n",
+    42,
+    null,
+  ]) {
+    assert.equal(isResultsHref(bad), false, String(bad).slice(0, 40));
+  }
+
+  const ok = JSON.stringify({
+    name: "Shanghai",
+    href: "/explore?name=Shanghai&lat=31.23&lon=121.47&r=6000",
+  });
+  assert.deepEqual(parseLastSearch(ok), {
+    name: "Shanghai",
+    href: "/explore?name=Shanghai&lat=31.23&lon=121.47&r=6000",
+  });
+  assert.equal(parseLastSearch(null), null);
+  assert.equal(parseLastSearch("{oops"), null);
+  assert.equal(
+    parseLastSearch(JSON.stringify({ name: "", href: "/explore?x=1" })),
+    null,
+  );
+  assert.equal(
+    parseLastSearch(
+      JSON.stringify({ name: "x".repeat(81), href: "/explore?x=1" }),
+    ),
+    null,
+  );
+  assert.equal(
+    parseLastSearch(
+      JSON.stringify({ name: "X", href: "https://evil.example" }),
+    ),
+    null,
+  );
+});
