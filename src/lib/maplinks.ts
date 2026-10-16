@@ -77,3 +77,25 @@ export function mapLinks(place: {
     },
   ];
 }
+
+/**
+ * One Google Maps link for a whole day: first stop to last, others as
+ * waypoints. Google allows at most 9 waypoints, so longer days return null.
+ */
+export function googleDayLink(
+  stops: { lat: number; lon: number }[],
+  mode: TravelMode,
+): string | null {
+  if (stops.length < 2 || stops.length > 11) return null;
+  const point = (s: { lat: number; lon: number }) => `${s.lat},${s.lon}`;
+  const travel = { walk: "walking", bike: "bicycling", drive: "driving" }[mode];
+  const params = new URLSearchParams({
+    api: "1",
+    origin: point(stops[0]),
+    destination: point(stops[stops.length - 1]),
+    travelmode: travel,
+  });
+  const middle = stops.slice(1, -1).map(point);
+  if (middle.length > 0) params.set("waypoints", middle.join("|"));
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}

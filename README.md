@@ -5,7 +5,7 @@ reason it is worth a visit, where that reason comes from, and the practical
 details to check before you go.
 
 **Status:** all three planned steps are built: discovery with recommendation
-reasons, the map and day plan, and companion voting.
+reasons, the map and multi-day routing, and companion voting.
 
 ## What it does today
 
@@ -27,17 +27,24 @@ reasons, the map and day plan, and companion voting.
 
 - **Map.** Every results page shows the places on an interactive map
   (MapLibre + free OpenFreeMap tiles, no key). Clicking a pin jumps to its card.
-- **Day plan (`/plan`).** Tap "Add to my day" on up to 12 places. See them
-  numbered on the map, reorder them, set how long you will stay at each, pick
-  walk / bike / drive and a start time, and get an itinerary with arrival times
-  and travel time between stops. "Shortest route" keeps your first stop and finds
-  the quickest order for the rest (exact for up to 12 stops).
-- **Navigation hand-off.** Each leg has links that open turn-by-turn directions
-  in Google Maps, Apple Maps or Amap (including a public-transit link).
-- **Shareable, not stored.** The plan lives in your browser tab and in the page
-  link (`/plan#p=…`). Nothing is saved on a server.
+- **Multi-day trips (`/plan`).** Tap "Add to my trip" on places, then organise
+  them into days (up to 10 days, 12 stops per day, 40 in total). Each day has
+  its own map, start time, travel mode (walk / bike / drive), stay times and
+  itinerary with arrival times and travel time between stops. Move a stop to
+  another day, reorder within a day, or let "Shortest route" find the quickest
+  order for the day (it keeps your first stop; exact for up to 12 stops).
+- **Routing for each day.** Roads-based times, distance and the route drawn on
+  that day's map, with written step-by-step directions for each leg when the
+  routing service provides them.
+- **Navigation hand-off.** Each leg has links that open live turn-by-turn
+  directions in Google Maps, Apple Maps or Amap (including a public-transit
+  link), and each day can open as one multi-stop route in Google Maps (up to 11
+  stops).
+- **Shareable, not stored.** The whole trip lives in your browser tab and in the
+  page link (`/plan#p=…`). Nothing is saved on a server. Links made by earlier
+  single-day versions still open.
 
-- **Vote with friends.** On the day plan, "Create voting link" gives a link for
+- **Vote with friends.** On the trip page, "Create voting link" gives a link for
   companions. They enter a display name (no sign-up) and vote Must go /
   Interested / Skip on each stop, see live totals and who voted what, and the
   group ranking (2 × Must go + 1 × Interested − 1 × Skip). The organiser can

@@ -59,24 +59,27 @@ export default function About() {
         have no source text.
       </p>
 
-      <h2>Maps and your day plan</h2>
+      <h2>Maps, routes and your trip</h2>
       <p>
-        Add places to “Your day” to see them on a map and in order. Travel times
-        follow real roads and paths when the routing service is available;
-        otherwise they are labelled straight-line estimates. They don’t include
+        Add places to “Your trip” and organise them into days. Each day has its
+        own map, route, start time and way of getting around (walk, bike or
+        drive). Travel times follow real roads and paths when the routing
+        service is available; otherwise they are labelled straight-line
+        estimates. Each leg lists written directions when available, plus links
+        that open live navigation in your own maps app. Times don’t include
         traffic, waiting or public transit, and opening hours are not checked
-        against your schedule — each leg has links that open live directions in
-        your own maps app. Your plan stays in your browser and in the link you
-        share; nothing is stored on our servers.
+        against your schedule. Your trip stays in your browser and in the link
+        you share; nothing is stored on our servers.
       </p>
 
       <h2>Voting with friends</h2>
       <p>
-        You can turn your day into a voting link. Friends choose a display name
+        You can turn your trip into a voting link. Friends choose a display name
         — there are no accounts — and vote Must go, Interested or Skip on each
-        place. Everyone with the link sees the votes and the names entered, so
-        share it only with people you trust. The organiser can close voting or
-        delete the room, and rooms disappear after 30 days of inactivity.
+        place, across every day of the trip. Everyone with the link sees the
+        votes and the names entered, so share it only with people you trust. The
+        organiser can close voting or delete the room, and rooms disappear after
+        30 days of inactivity.
       </p>
 
       <h2>Practical details</h2>

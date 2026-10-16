@@ -1212,3 +1212,138 @@ summary {
 .vote-share {
   margin-top: 24px;
 }
+
+/* ---------- Days ---------- */
+.day-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.day-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.day-tab:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+.day-tab.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+.day-tab.add-day {
+  border-style: dashed;
+  color: var(--muted);
+}
+.day-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.day-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 10%);
+  font-size: 0.78rem;
+}
+.day-tab.active .day-count {
+  background: rgb(255 255 255 / 25%);
+}
+.empty-day {
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  max-width: 640px;
+}
+.plan-footer {
+  display: grid;
+  gap: 8px 40px;
+  margin-top: 36px;
+}
+@media (min-width: 960px) {
+  .plan-footer {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+.plan-footer .share {
+  margin-top: 0;
+}
+.steps-list {
+  margin: 8px 0;
+  padding-left: 22px;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+.steps-list li {
+  padding: 2px 0;
+}
+.stop-tools select {
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+.day-heading {
+  margin: 28px 0 10px;
+  font-size: 1.4rem;
+}
+.day-heading:first-child {
+  margin-top: 0;
+}
+.rank-day {
+  margin: 16px 0 0;
+  font-size: 1rem;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 10px;
+}
+
+/* One colour per day on the map and in the legend. */
+.pin.day-color-0,
+.legend-dot.day-color-0 {
+  background: #c4492a;
+}
+.pin.day-color-1,
+.legend-dot.day-color-1 {
+  background: #17635f;
+}
+.pin.day-color-2,
+.legend-dot.day-color-2 {
+  background: #b9831b;
+}
+.pin.day-color-3,
+.legend-dot.day-color-3 {
+  background: #5b4bb7;
+}
+.pin.day-color-4,
+.legend-dot.day-color-4 {
+  background: #2f6fb5;
+}
+.pin.day-color-5,
+.legend-dot.day-color-5 {
+  background: #a33a73;
+}
+.pin.pin-stop.pin-selected {
+  background: var(--ink);
+}

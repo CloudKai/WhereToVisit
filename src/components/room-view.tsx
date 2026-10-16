@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type Plan, encodePlan } from "@/lib/plan";
+import { type Day, encodePlan, stopCount } from "@/lib/plan";
 import {
   ApiError,
   getMe,
@@ -18,12 +18,13 @@ import {
   cleanName,
   isToken,
   rankStops,
+  rankWithinDays,
   type RoomView as RoomData,
   VOTE_LABEL,
   VOTES,
   type Vote,
 } from "@/lib/room-types";
-import { type MapMarker, MapCanvas } from "./map";
+import { MapCanvas, type MapMarker } from "./map";
 import { usePlan } from "./plan-provider";
 
 const POLL_MS = 15000;
@@ -39,10 +40,10 @@ export function RoomView({ id }: { id: string }) {
   const [me, setMe] = useState<Me>();
   const [ownerKey, setOwnerKey] = useState<string>();
   const [nameDraft, setNameDraft] = useState("");
+  const [editingName, setEditingName] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>({});
   const [selected, setSelected] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [editingName, setEditingName] = useState(false);
   const pending = useRef(0);
   const ready = useRef(false);
   const hasRoom = useRef(false);
@@ -174,7 +175,8 @@ export function RoomView({ id }: { id: string }) {
     }
   }
 
-  const stops = room?.stops ?? [];
+  const days = room?.days ?? [];
+  const multiDay = days.length > 1;
   const myVotes = useMemo(() => {
     const merged: Record<string, Vote | null | undefined> = {
       ...room?.you?.votes,
@@ -182,22 +184,24 @@ export function RoomView({ id }: { id: string }) {
     for (const [stopId, vote] of Object.entries(overlay)) merged[stopId] = vote;
     return merged;
   }, [room?.you?.votes, overlay]);
-  const ranked = useMemo(
-    () => (room ? rankStops(room.stops, room.tallies) : []),
+  const rankedDays = useMemo(
+    () => (room ? rankWithinDays(room.days, room.tallies) : []),
     [room],
   );
-  const markers: MapMarker[] = stops.map((s, i) => ({
-    id: s.id,
-    lat: s.lat,
-    lon: s.lon,
-    label: `${i + 1}. ${s.name}`,
-    kind: "stop",
-    badge: String(i + 1),
-  }));
+  const markers: MapMarker[] = days.flatMap((day, d) =>
+    day.stops.map((s, i) => ({
+      id: s.id,
+      lat: s.lat,
+      lon: s.lon,
+      label: `${multiDay ? `Day ${d + 1} · ` : ""}${i + 1}. ${s.name}`,
+      kind: "stop" as const,
+      badge: String(i + 1),
+      group: d,
+    })),
+  );
 
-  function copyToMyDay(order: typeof stops) {
-    const next: Plan = { destination: room?.destination, stops: order };
-    replace(next);
+  function copyToMyTrip(nextDays: Day[]) {
+    replace({ destination: room?.destination, days: nextDays });
     router.push("/plan");
   }
 
@@ -227,7 +231,7 @@ export function RoomView({ id }: { id: string }) {
   }
 
   const planDiffers =
-    encodePlan(plan) !== encodePlan({ destination: room.destination, stops });
+    encodePlan(plan) !== encodePlan({ destination: room.destination, days });
 
   return (
     <div className="page-section room">
@@ -301,125 +305,153 @@ export function RoomView({ id }: { id: string }) {
             selectedId={selected}
             onSelect={setSelected}
           />
+          {multiDay && (
+            <p className="legend" aria-hidden="true">
+              {days.map((_, d) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: days are positional
+                <span key={d} className="legend-item">
+                  <span className={`legend-dot day-color-${d % 6}`} /> Day{" "}
+                  {d + 1}
+                </span>
+              ))}
+            </p>
+          )}
         </div>
 
         <div className="plan-list">
-          <ol className="itinerary vote-list">
-            {stops.map((stop, index) => {
-              const tally = room.tallies[stop.id];
-              const mine = myVotes[stop.id] ?? null;
-              const count =
-                (tally?.must.length ?? 0) +
-                (tally?.interested.length ?? 0) +
-                (tally?.skip.length ?? 0);
-              return (
-                <li key={stop.id}>
-                  <article
-                    className={selected === stop.id ? "stop selected" : "stop"}
-                  >
-                    <button
-                      type="button"
-                      className="stop-number"
-                      onClick={() => setSelected(stop.id)}
-                      aria-pressed={selected === stop.id}
-                      aria-label={`Show ${stop.name} on the map`}
-                    >
-                      {index + 1}
-                    </button>
-                    <div className="stop-main">
-                      <h3>{stop.name}</h3>
-                      <p className="hint">
-                        {stop.category === "cafe" ? "Café" : "Restaurant"}
-                        {stop.address ? ` · ${stop.address}` : ""}
-                      </p>
-                      <div
-                        className="vote-buttons"
-                        role="group"
-                        aria-label={`Your vote for ${stop.name}`}
+          {days.map((day, d) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: days are positional
+            <section key={d} aria-label={multiDay ? `Day ${d + 1}` : "Stops"}>
+              {multiDay && <h2 className="day-heading">Day {d + 1}</h2>}
+              <ol className="itinerary vote-list">
+                {day.stops.map((stop, index) => {
+                  const tally = room.tallies[stop.id];
+                  const mine = myVotes[stop.id] ?? null;
+                  const count =
+                    (tally?.must.length ?? 0) +
+                    (tally?.interested.length ?? 0) +
+                    (tally?.skip.length ?? 0);
+                  return (
+                    <li key={stop.id}>
+                      <article
+                        className={
+                          selected === stop.id ? "stop selected" : "stop"
+                        }
                       >
-                        {VOTES.map((vote) => (
-                          <button
-                            key={vote}
-                            type="button"
-                            className={`vote vote-${vote}${mine === vote ? " chosen" : ""}`}
-                            aria-pressed={mine === vote}
-                            disabled={!me || room.closed}
-                            onClick={() =>
-                              castVote(stop.id, mine === vote ? null : vote)
-                            }
+                        <button
+                          type="button"
+                          className="stop-number"
+                          onClick={() => setSelected(stop.id)}
+                          aria-pressed={selected === stop.id}
+                          aria-label={`Show ${stop.name} on the map`}
+                        >
+                          {index + 1}
+                        </button>
+                        <div className="stop-main">
+                          <h3>{stop.name}</h3>
+                          <p className="hint">
+                            {stop.category === "cafe" ? "Café" : "Restaurant"}
+                            {stop.address ? ` · ${stop.address}` : ""}
+                          </p>
+                          <div
+                            className="vote-buttons"
+                            role="group"
+                            aria-label={`Your vote for ${stop.name}`}
                           >
-                            {VOTE_LABEL[vote]}
-                          </button>
-                        ))}
-                      </div>
-                      {!me && !room.closed && (
-                        <p className="hint">Enter your name above to vote.</p>
-                      )}
-                      <p className="tally">
-                        <span className="t-must">
-                          {tally?.must.length ?? 0} Must go
-                        </span>
-                        <span className="t-interested">
-                          {tally?.interested.length ?? 0} Interested
-                        </span>
-                        <span className="t-skip">
-                          {tally?.skip.length ?? 0} Skip
-                        </span>
-                      </p>
-                      {count > 0 && (
-                        <details className="more">
-                          <summary>Who voted</summary>
-                          <ul className="voters">
-                            {VOTES.filter(
-                              (v) => (tally?.[v].length ?? 0) > 0,
-                            ).map((v) => (
-                              <li key={v}>
-                                <strong>{VOTE_LABEL[v]}:</strong>{" "}
-                                {tally?.[v].join(", ")}
-                              </li>
+                            {VOTES.map((vote) => (
+                              <button
+                                key={vote}
+                                type="button"
+                                className={`vote vote-${vote}${mine === vote ? " chosen" : ""}`}
+                                aria-pressed={mine === vote}
+                                disabled={!me || room.closed}
+                                onClick={() =>
+                                  castVote(stop.id, mine === vote ? null : vote)
+                                }
+                              >
+                                {VOTE_LABEL[vote]}
+                              </button>
                             ))}
-                          </ul>
-                        </details>
-                      )}
-                    </div>
-                  </article>
-                </li>
-              );
-            })}
-          </ol>
+                          </div>
+                          {!me && !room.closed && (
+                            <p className="hint">
+                              Enter your name above to vote.
+                            </p>
+                          )}
+                          <p className="tally">
+                            <span className="t-must">
+                              {tally?.must.length ?? 0} Must go
+                            </span>
+                            <span className="t-interested">
+                              {tally?.interested.length ?? 0} Interested
+                            </span>
+                            <span className="t-skip">
+                              {tally?.skip.length ?? 0} Skip
+                            </span>
+                          </p>
+                          {count > 0 && (
+                            <details className="more">
+                              <summary>Who voted</summary>
+                              <ul className="voters">
+                                {VOTES.filter(
+                                  (v) => (tally?.[v].length ?? 0) > 0,
+                                ).map((v) => (
+                                  <li key={v}>
+                                    <strong>{VOTE_LABEL[v]}:</strong>{" "}
+                                    {tally?.[v].join(", ")}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
+                        </div>
+                      </article>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          ))}
 
           <section className="share" aria-labelledby="rank-heading">
             <h2 id="rank-heading">Group ranking</h2>
             <p className="hint">
               Score = 2 × Must go + 1 × Interested − 1 × Skip.
             </p>
-            <ol className="ranking">
-              {ranked.map((stop) => (
-                <li key={stop.id}>
-                  <span>{stop.name}</span>
-                  <strong>{room.tallies[stop.id]?.score ?? 0}</strong>
-                </li>
-              ))}
-            </ol>
+            {rankedDays.map((day, d) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: days are positional
+              <div key={d}>
+                {multiDay && <h3 className="rank-day">Day {d + 1}</h3>}
+                <ol className="ranking">
+                  {rankStops(day.stops, room.tallies).map((stop) => (
+                    <li key={stop.id}>
+                      <span>{stop.name}</span>
+                      <strong>{room.tallies[stop.id]?.score ?? 0}</strong>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
             <div className="share-row actions">
               <button
                 type="button"
                 className="button"
-                onClick={() => copyToMyDay(ranked)}
+                onClick={() => copyToMyTrip(rankedDays)}
               >
-                Plan a route in this order
+                Plan routes in this order
               </button>
               <button
                 type="button"
                 className="button secondary"
-                onClick={() => copyToMyDay(stops)}
+                onClick={() => copyToMyTrip(days)}
               >
                 Plan in the original order
               </button>
             </div>
             <p className="hint">
-              This copies the stops into your own “Your day” page, where you can
-              add travel times. Your choice doesn’t change anyone else’s plan.
+              This copies the stops into your own “Your trip” page, where you
+              get a map and travel times for each day. Ranking only reorders
+              stops within a day. It doesn’t change anyone else’s plan.
             </p>
           </section>
 
@@ -430,22 +462,22 @@ export function RoomView({ id }: { id: string }) {
                 <button
                   type="button"
                   className="button secondary"
-                  disabled={busy || plan.stops.length === 0 || !planDiffers}
+                  disabled={busy || stopCount(plan) === 0 || !planDiffers}
                   onClick={() =>
                     organiser(
                       () => roomApi.updateStops(id, ownerKey, encodePlan(plan)),
-                      "Stops updated from your current plan. Votes for removed places were cleared.",
+                      "Updated from your current trip. Votes for removed places were cleared.",
                     )
                   }
                   title={
-                    plan.stops.length === 0
-                      ? "Your day is empty in this browser"
+                    stopCount(plan) === 0
+                      ? "Your trip is empty in this browser"
                       : !planDiffers
-                        ? "Your day already matches"
+                        ? "Your trip already matches"
                         : undefined
                   }
                 >
-                  Update stops from my day
+                  Update from my trip
                 </button>
                 <button
                   type="button"
@@ -469,8 +501,9 @@ export function RoomView({ id }: { id: string }) {
                       !window.confirm(
                         "Delete this voting room and all votes? This can’t be undone.",
                       )
-                    )
+                    ) {
                       return;
+                    }
                     try {
                       await roomApi.remove(id, ownerKey);
                       setCurrentRoom(null);

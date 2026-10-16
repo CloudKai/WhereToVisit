@@ -14,6 +14,8 @@ export type MapMarker = {
   kind: "editor" | "nearby" | "stop";
   /** Short text shown inside the pin, such as the stop number. */
   badge?: string;
+  /** Colour group, e.g. the day number (0-based). */
+  group?: number;
 };
 
 type MapLibre = typeof import("maplibre-gl");
@@ -30,7 +32,10 @@ type Props = {
 
 function markerKey(markers: MapMarker[]): string {
   return markers
-    .map((m) => `${m.id}|${m.lat}|${m.lon}|${m.kind}|${m.badge ?? ""}`)
+    .map(
+      (m) =>
+        `${m.id}|${m.lat}|${m.lon}|${m.kind}|${m.badge ?? ""}|${m.group ?? ""}`,
+    )
     .join(";");
 }
 
@@ -123,7 +128,7 @@ export function MapCanvas({
     for (const pin of pins) {
       const el = document.createElement("button");
       el.type = "button";
-      el.className = `pin pin-${pin.kind}`;
+      el.className = `pin pin-${pin.kind}${pin.group === undefined ? "" : ` day-color-${pin.group % 6}`}`;
       el.title = pin.label;
       el.setAttribute("aria-label", pin.label);
       if (pin.badge) el.textContent = pin.badge;

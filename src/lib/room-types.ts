@@ -1,4 +1,4 @@
-import type { Stop } from "./plan.ts";
+import type { Day, Stop } from "./plan.ts";
 
 export const VOTES = ["must", "interested", "skip"] as const;
 export type Vote = (typeof VOTES)[number];
@@ -35,6 +35,9 @@ export type Participant = {
 export type RoomView = {
   id: string;
   destination?: string;
+  /** Days in order; every day has at least one stop. */
+  days: Day[];
+  /** All stops across all days, in order (convenience for tallies). */
   stops: Stop[];
   closed: boolean;
   createdAt: number;
@@ -140,4 +143,12 @@ export function rankStops(
     }))
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map((entry) => entry.stop);
+}
+
+/** Re-ranks the stops inside each day by group score; day order is unchanged. */
+export function rankWithinDays(
+  days: Day[],
+  tallies: Record<string, Tally>,
+): Day[] {
+  return days.map((day) => ({ ...day, stops: rankStops(day.stops, tallies) }));
 }

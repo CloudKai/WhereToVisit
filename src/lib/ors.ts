@@ -7,6 +7,7 @@ import {
   type Mode,
   optimiseOrder,
   type RouteResult,
+  type Step,
 } from "./routing.ts";
 
 const PROFILE: Record<Mode, string> = {
@@ -18,17 +19,44 @@ const PROFILE: Record<Mode, string> = {
 type DirectionsResponse = {
   features?: {
     geometry?: { coordinates?: number[][] };
-    properties?: { segments?: { duration?: number; distance?: number }[] };
+    properties?: {
+      segments?: {
+        duration?: number;
+        distance?: number;
+        steps?: { instruction?: unknown; distance?: unknown }[];
+      }[];
+    };
   }[];
 };
 
 type MatrixResponse = { durations?: (number | null)[][] };
 
-/** Reads legs and road geometry from an ORS GeoJSON directions response. */
+const MAX_STEPS_PER_LEG = 60;
+
+/** Keeps only well-formed written steps, trimmed to a sensible size. */
+export function parseSteps(
+  steps: { instruction?: unknown; distance?: unknown }[] | undefined,
+): Step[] {
+  const out: Step[] = [];
+  for (const step of steps ?? []) {
+    if (out.length >= MAX_STEPS_PER_LEG) break;
+    if (typeof step.instruction !== "string") continue;
+    const text = step.instruction.replace(/\s+/g, " ").trim().slice(0, 200);
+    if (!text) continue;
+    const distance =
+      typeof step.distance === "number" && Number.isFinite(step.distance)
+        ? step.distance
+        : 0;
+    out.push({ text, distanceM: Math.round(distance) });
+  }
+  return out;
+}
+
+/** Reads legs, written steps and road geometry from an ORS GeoJSON directions response. */
 export function parseDirections(
   data: DirectionsResponse,
   stopCount: number,
-): { legs: Leg[]; geometry: [number, number][] } {
+): { legs: Leg[]; geometry: [number, number][]; steps: Step[][] } {
   const feature = data.features?.[0];
   const segments = feature?.properties?.segments;
   const coordinates = feature?.geometry?.coordinates;
@@ -52,7 +80,11 @@ export function parseDirections(
     )
     .map((c) => [c[0], c[1]] as [number, number]);
   if (geometry.length < 2) throw new Error("empty route geometry");
-  return { legs, geometry };
+  return {
+    legs,
+    geometry,
+    steps: segments.map((segment) => parseSteps(segment.steps)),
+  };
 }
 
 /** Reads a square duration matrix, rejecting missing or non-square data. */
@@ -139,13 +171,15 @@ export async function planRoute(
       order = optimiseOrder(matrix);
     }
     const ordered = order.map((i) => points[i]);
-    const { legs, geometry } = parseDirections(
+    const { legs, geometry, steps } = parseDirections(
       await postJson<DirectionsResponse>(
         "OpenRouteService",
         `${base}/directions/${PROFILE[mode]}/geojson`,
         {
           coordinates: ordered.map((p) => [p.lon, p.lat]),
-          instructions: false,
+          instructions: true,
+          instructions_format: "text",
+          language: "en",
         },
         { headers },
       ),
@@ -155,6 +189,7 @@ export async function planRoute(
       order,
       legs,
       geometry,
+      steps,
       source: "openrouteservice",
     };
     cache.set(cacheKey, result);

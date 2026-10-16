@@ -98,6 +98,7 @@ export class WindowCounter {
 
   /** Returns true when the call is allowed and records it. */
   take(key: string, limit: number, now = Date.now()): boolean {
+    if (limit <= 0) return false;
     if (this.hits.size > 5000) this.prune(now);
     const entry = this.hits.get(key);
     if (!entry || now - entry.start >= this.windowMs) {

@@ -4,7 +4,7 @@ import { isLat, isLon } from "@/lib/geo";
 import { WindowCounter } from "@/lib/http";
 import { planRoute } from "@/lib/ors";
 import { MODES, type LatLon, type Mode } from "@/lib/routing";
-import { MAX_STOPS } from "@/lib/plan";
+import { MAX_STOPS_PER_DAY } from "@/lib/plan";
 
 const limiter = new WindowCounter(60_000);
 const LIMIT_PER_MINUTE = 20;
@@ -43,8 +43,12 @@ export async function POST(request: Request) {
     optimise?: unknown;
   };
 
-  if (!Array.isArray(stops) || stops.length < 2 || stops.length > MAX_STOPS) {
-    return bad(`Provide between 2 and ${MAX_STOPS} stops`);
+  if (
+    !Array.isArray(stops) ||
+    stops.length < 2 ||
+    stops.length > MAX_STOPS_PER_DAY
+  ) {
+    return bad(`Provide between 2 and ${MAX_STOPS_PER_DAY} stops`);
   }
   const points: LatLon[] = [];
   for (const stop of stops) {

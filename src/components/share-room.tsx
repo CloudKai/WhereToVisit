@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { encodePlan } from "@/lib/plan";
+import { encodePlan, stopCount } from "@/lib/plan";
 import {
   ApiError,
   getCurrentRoom,
@@ -33,7 +33,7 @@ export function ShareRoom() {
     if (id && ownerKey) setRoom({ id, ownerKey });
   }, []);
 
-  if (!hydrated || plan.stops.length === 0) return null;
+  if (!hydrated || stopCount(plan) === 0) return null;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -75,7 +75,7 @@ export function ShareRoom() {
       await roomApi.updateStops(room.id, room.ownerKey, encodePlan(plan));
       setMessage({
         kind: "ok",
-        text: "Shared stops updated. Votes for removed places were cleared.",
+        text: "Shared trip updated. Votes for removed places were cleared.",
       });
     });
 
@@ -103,7 +103,8 @@ export function ShareRoom() {
           <p className="hint">
             Get a link for your companions. They enter a name — no sign-up — and
             vote <strong>Must go</strong>, <strong>Interested</strong> or{" "}
-            <strong>Skip</strong> on each stop. You see the group’s ranking.
+            <strong>Skip</strong> on each stop, across all days. You see the
+            group’s ranking.
           </p>
           <button
             type="button"
@@ -168,7 +169,7 @@ export function ShareRoom() {
               onClick={update}
               disabled={busy}
             >
-              {busy ? "Updating…" : "Update shared stops from this plan"}
+              {busy ? "Updating…" : "Update shared trip from my plan"}
             </button>
           </div>
         </>

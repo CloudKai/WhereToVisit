@@ -6,6 +6,9 @@ export const MODES: Mode[] = ["walk", "bike", "drive"];
 export type LatLon = { lat: number; lon: number };
 export type Leg = { durationS: number; distanceM: number };
 
+/** One written instruction, e.g. "Turn left onto Nanjing Road". */
+export type Step = { text: string; distanceM: number };
+
 export type RouteResult = {
   /** Indices into the request's stops, in visiting order. */
   order: number[];
@@ -13,6 +16,8 @@ export type RouteResult = {
   legs: Leg[];
   /** Road geometry as [lon, lat] pairs, or straight lines for estimates. */
   geometry: [number, number][];
+  /** steps[i] are the written directions for legs[i]; absent for estimates. */
+  steps?: Step[][];
   source: "openrouteservice" | "estimate";
   note?: string;
 };

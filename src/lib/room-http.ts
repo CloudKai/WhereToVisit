@@ -3,7 +3,8 @@ import { getConfig } from "./config.ts";
 import { allow, RoomError } from "./rooms.ts";
 import { getStore, StorageError, type Store } from "./store.ts";
 
-const MAX_BODY_BYTES = 16 * 1024;
+// A multi-day trip token can be ~24 KB, so allow a little more than that.
+const MAX_BODY_BYTES = 32 * 1024;
 const NO_STORE = { "cache-control": "no-store" } as const;
 
 export function json(

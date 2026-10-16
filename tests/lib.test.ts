@@ -103,6 +103,7 @@ test("WindowCounter enforces a limit per window", () => {
   assert.ok(!counter.take("a", 2, 20));
   assert.ok(counter.take("b", 2, 20));
   assert.ok(counter.take("a", 2, 1500), "window reset");
+  assert.ok(!new WindowCounter(1000).take("fresh", 0, 0), "a limit of 0 blocks even the first call");
 });
 
 const SOURCE =

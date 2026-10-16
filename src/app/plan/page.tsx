@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { PlanView } from "@/components/plan-view";
 
 export const metadata: Metadata = {
-  title: "Your day — WhereToVisit",
+  title: "Your trip — WhereToVisit",
   robots: { index: false },
 };
 

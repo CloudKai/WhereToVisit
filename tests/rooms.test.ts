@@ -7,6 +7,7 @@ import {
   displayNames,
   isToken,
   rankStops,
+  rankWithinDays,
 } from "../src/lib/room-types.ts";
 import {
   allow,
@@ -39,7 +40,16 @@ function stop(n: number): Stop {
   };
 }
 
-const PLAN: Plan = { destination: "Kyoto", stops: [stop(1), stop(2), stop(3)] };
+const day = (...stops: Stop[]) => ({
+  start: 600,
+  mode: "walk" as const,
+  stops,
+});
+const PLAN: Plan = {
+  destination: "Kyoto",
+  days: [day(stop(1), stop(2)), day(stop(3))],
+};
+const ALL = PLAN.days.flatMap((d) => d.stops);
 const TOKEN = encodePlan(PLAN);
 const ALICE = "alice-participant-id-0001";
 const BOB = "bob-participant-id-000002";
@@ -120,7 +130,7 @@ test("a room can be created, voted in and read back", async () => {
   assert.match(id, /^[A-Za-z0-9_-]{22}$/);
   assert.ok(ownerKey.length >= 30);
 
-  const [a, b, c] = PLAN.stops;
+  const [a, b, c] = ALL;
   await castVote(store, id, {
     participantId: ALICE,
     name: "Alice",
@@ -149,6 +159,10 @@ test("a room can be created, voted in and read back", async () => {
   const view = await getRoom(store, id, { participantId: ALICE });
   assert.equal(view.destination, "Kyoto");
   assert.equal(view.stops.length, 3);
+  assert.deepEqual(
+    view.days.map((d) => d.stops.length),
+    [2, 1],
+  );
   assert.equal(view.participants.length, 2);
   assert.equal(view.tallies[a.id].score, 3);
   assert.equal(view.tallies[b.id].score, -1);
@@ -169,7 +183,7 @@ test("a voter's own id is never exposed in the room view", async () => {
   await castVote(store, id, {
     participantId: ALICE,
     name: "Alice",
-    stopId: PLAN.stops[0].id,
+    stopId: ALL[0].id,
     vote: "must",
   });
   const json = JSON.stringify(await getRoom(store, id));
@@ -179,7 +193,7 @@ test("a voter's own id is never exposed in the room view", async () => {
 test("changing or clearing a vote replaces it", async () => {
   const store = new MemoryStore();
   const { id } = await createRoom(store, TOKEN);
-  const a = PLAN.stops[0];
+  const a = ALL[0];
   const vote = (v: "must" | "skip" | null) =>
     castVote(store, id, {
       participantId: ALICE,
@@ -199,7 +213,7 @@ test("changing or clearing a vote replaces it", async () => {
 test("renaming keeps the same voter instead of adding another", async () => {
   const store = new MemoryStore();
   const { id } = await createRoom(store, TOKEN);
-  const a = PLAN.stops[0];
+  const a = ALL[0];
   await castVote(store, id, {
     participantId: ALICE,
     name: "Al",
@@ -220,7 +234,7 @@ test("renaming keeps the same voter instead of adding another", async () => {
 test("votes are validated", async () => {
   const store = new MemoryStore();
   const { id } = await createRoom(store, TOKEN);
-  const a = PLAN.stops[0];
+  const a = ALL[0];
   const base = {
     participantId: ALICE,
     name: "Alice",
@@ -239,7 +253,7 @@ test("votes are validated", async () => {
 test("the number of voters is capped", async () => {
   const store = new MemoryStore();
   const { id } = await createRoom(store, TOKEN);
-  const a = PLAN.stops[0];
+  const a = ALL[0];
   for (let i = 0; i < 30; i++) {
     await castVote(store, id, {
       participantId: `participant-number-${String(i).padStart(4, "0")}`,
@@ -279,7 +293,7 @@ test("owner-only actions reject everyone else", async () => {
     castVote(store, id, {
       participantId: ALICE,
       name: "Alice",
-      stopId: PLAN.stops[0].id,
+      stopId: ALL[0].id,
       vote: "must",
     }),
     409,
@@ -288,7 +302,7 @@ test("owner-only actions reject everyone else", async () => {
   await castVote(store, id, {
     participantId: ALICE,
     name: "Alice",
-    stopId: PLAN.stops[0].id,
+    stopId: ALL[0].id,
     vote: "must",
   });
 
@@ -299,7 +313,7 @@ test("owner-only actions reject everyone else", async () => {
 test("updating stops prunes votes for removed places", async () => {
   const store = new MemoryStore();
   const { id, ownerKey } = await createRoom(store, TOKEN);
-  const [a, b] = PLAN.stops;
+  const [a, b] = ALL;
   await castVote(store, id, {
     participantId: ALICE,
     name: "Alice",
@@ -317,7 +331,7 @@ test("updating stops prunes votes for removed places", async () => {
     store,
     id,
     ownerKey,
-    encodePlan({ destination: "Kyoto", stops: [a, stop(9)] }),
+    encodePlan({ destination: "Kyoto", days: [day(a, stop(9))] }),
   );
   const view = await getRoom(store, id, { participantId: ALICE });
   assert.deepEqual(
@@ -333,9 +347,60 @@ test("updating stops prunes votes for removed places", async () => {
   );
 });
 
+test("empty days are dropped and the rest renumbered", async () => {
+  const store = new MemoryStore();
+  const token = encodePlan({
+    days: [day(), day(stop(1)), day(), day(stop(2))],
+  });
+  const { id } = await createRoom(store, token);
+  const view = await getRoom(store, id);
+  assert.deepEqual(
+    view.days.map((d) => d.stops.map((s) => s.name)),
+    [["Stop 1"], ["Stop 2"]],
+  );
+});
+
+test("rooms from the earlier single-day format still load and accept votes", async () => {
+  const store = new MemoryStore();
+  const id = "legacy-room-id-0000000";
+  await store.set(
+    `wtv:room:${id}`,
+    JSON.stringify({
+      v: 1,
+      stops: [stop(1), stop(2)],
+      createdAt: 1,
+      ownerHash: "00",
+      closed: false,
+    }),
+    3600,
+  );
+  await castVote(store, id, {
+    participantId: ALICE,
+    name: "Alice",
+    stopId: stop(2).id,
+    vote: "must",
+  });
+  const view = await getRoom(store, id);
+  assert.equal(view.days.length, 1);
+  assert.equal(view.tallies[stop(2).id].score, 2);
+});
+
+test("ranking within days never moves a stop to another day", () => {
+  const tallies = {
+    [stop(1).id]: { must: [], interested: [], skip: [], score: 0 },
+    [stop(2).id]: { must: [], interested: [], skip: [], score: 5 },
+    [stop(3).id]: { must: [], interested: [], skip: [], score: 1 },
+  };
+  const ranked = rankWithinDays(PLAN.days, tallies);
+  assert.deepEqual(
+    ranked.map((d) => d.stops.map((s) => s.name)),
+    [["Stop 2", "Stop 1"], ["Stop 3"]],
+  );
+});
+
 test("empty or invalid plans cannot become rooms", async () => {
   const store = new MemoryStore();
-  await expectError(createRoom(store, encodePlan({ stops: [] })), 400);
+  await expectError(createRoom(store, encodePlan({ days: [day()] })), 400);
   await expectError(createRoom(store, "garbage"), 400);
   await expectError(createRoom(store, undefined), 400);
 });

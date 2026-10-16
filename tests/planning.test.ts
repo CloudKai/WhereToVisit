@@ -1,20 +1,31 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { directionLinks } from "../src/lib/maplinks.ts";
-import { parseDirections, parseMatrix } from "../src/lib/ors.ts";
+import { directionLinks, googleDayLink } from "../src/lib/maplinks.ts";
+import { parseDirections, parseMatrix, parseSteps } from "../src/lib/ors.ts";
 import {
+  addDay,
   addStop,
+  allStops,
   clampDwell,
   decodePlan,
+  EMPTY_PLAN,
   encodePlan,
-  MAX_STOPS,
+  findStop,
+  MAX_DAYS,
+  MAX_STOPS_PER_DAY,
+  MAX_TOTAL_STOPS,
   moveStop,
+  moveStopToDay,
   type Plan,
   placeToStop,
+  removeDay,
   removeStop,
-  reorder,
+  reorderDay,
+  setDayMode,
+  setDayStart,
   setDwell,
   type Stop,
+  stopCount,
   tokenFromHash,
 } from "../src/lib/plan.ts";
 import {
@@ -183,36 +194,109 @@ test("duration and distance formatting", () => {
 
 // ---------- plan state ----------
 
-test("addStop ignores duplicates and respects the limit", () => {
-  let plan: Plan = { stops: [] };
-  plan = addStop(plan, stop(1), "Kyoto");
-  plan = addStop(plan, stop(1));
-  assert.equal(plan.stops.length, 1);
+function planOf(...days: Stop[][]): Plan {
+  return {
+    days: days.map((stops) => ({ start: 600, mode: "walk" as const, stops })),
+  };
+}
+
+test("addStop targets a day, ignores duplicates across days, respects limits", () => {
+  let plan: Plan = planOf([], []);
+  plan = addStop(plan, stop(1), "Kyoto", 1);
   assert.equal(plan.destination, "Kyoto");
-  for (let i = 2; i <= MAX_STOPS + 3; i++) plan = addStop(plan, stop(i));
-  assert.equal(plan.stops.length, MAX_STOPS);
+  assert.deepEqual(
+    plan.days.map((d) => d.stops.length),
+    [0, 1],
+  );
+  assert.equal(addStop(plan, stop(1), undefined, 0), plan, "already in day 2");
+  for (let i = 2; i <= MAX_STOPS_PER_DAY + 3; i++)
+    plan = addStop(plan, stop(i), undefined, 1);
+  assert.equal(plan.days[1].stops.length, MAX_STOPS_PER_DAY);
+  assert.equal(
+    addStop(plan, stop(99), undefined, 5).days[1].stops.length,
+    MAX_STOPS_PER_DAY,
+    "bad day index clamps to last (full) day",
+  );
 });
 
-test("move, remove, reorder and dwell edits", () => {
-  let plan: Plan = { stops: [stop(1), stop(2), stop(3)] };
+test("the whole trip is capped", () => {
+  let plan: Plan = planOf(...Array.from({ length: 4 }, () => [] as Stop[]));
+  for (let i = 1; i <= MAX_TOTAL_STOPS + 10; i++) {
+    plan = addStop(plan, stop(i), undefined, Math.floor((i - 1) / 10) % 4);
+  }
+  assert.equal(stopCount(plan), MAX_TOTAL_STOPS);
+});
+
+test("move, remove, reorder and dwell edits work within a day", () => {
+  let plan = planOf([stop(1), stop(2), stop(3)]);
   plan = moveStop(plan, stop(3).id, -1);
   assert.deepEqual(
-    plan.stops.map((s) => s.name),
+    plan.days[0].stops.map((s) => s.name),
     ["Stop 1", "Stop 3", "Stop 2"],
   );
   assert.equal(moveStop(plan, stop(1).id, -1), plan, "cannot move first up");
-  plan = reorder(plan, [2, 1, 0]);
+  plan = reorderDay(plan, 0, [2, 1, 0]);
   assert.deepEqual(
-    plan.stops.map((s) => s.name),
+    plan.days[0].stops.map((s) => s.name),
     ["Stop 2", "Stop 3", "Stop 1"],
   );
-  assert.equal(reorder(plan, [0, 1]), plan, "partial order is rejected");
+  assert.equal(reorderDay(plan, 0, [0, 1]), plan, "partial order is rejected");
+  assert.equal(reorderDay(plan, 0, [0, 0, 1]), plan, "repeats are rejected");
+  assert.equal(reorderDay(plan, 3, [0]), plan, "unknown day is rejected");
   plan = setDwell(plan, stop(2).id, 5000);
-  assert.equal(plan.stops[0].dwell, 300);
+  assert.equal(plan.days[0].stops[0].dwell, 300);
   assert.equal(clampDwell(Number.NaN), 10);
   plan = removeStop(plan, stop(2).id);
-  assert.equal(plan.stops.length, 2);
-  assert.deepEqual(removeStop({ stops: [stop(1)] }, stop(1).id).stops, []);
+  assert.equal(stopCount(plan), 2);
+  const emptied = removeStop(planOf([stop(1)]), stop(1).id);
+  assert.equal(stopCount(emptied), 0);
+  assert.equal(emptied.days.length, 1, "the day itself remains");
+});
+
+test("stops can move between days", () => {
+  let plan = planOf([stop(1), stop(2)], [stop(3)]);
+  plan = moveStopToDay(plan, stop(1).id, 1);
+  assert.deepEqual(
+    plan.days.map((d) => d.stops.map((s) => s.name)),
+    [["Stop 2"], ["Stop 3", "Stop 1"]],
+  );
+  assert.deepEqual(findStop(plan, stop(1).id), { day: 1, index: 1 });
+  assert.equal(moveStopToDay(plan, stop(1).id, 1), plan, "same day");
+  assert.equal(moveStopToDay(plan, stop(1).id, 7), plan, "unknown day");
+  assert.equal(moveStopToDay(plan, "nope", 0), plan);
+  const full = planOf(
+    [stop(1)],
+    Array.from({ length: MAX_STOPS_PER_DAY }, (_, i) => stop(i + 10)),
+  );
+  assert.equal(moveStopToDay(full, stop(1).id, 1), full, "target day full");
+});
+
+test("days can be added, configured and removed", () => {
+  let plan: Plan = EMPTY_PLAN;
+  plan = setDayStart(plan, 0, 9 * 60 + 30);
+  plan = setDayMode(plan, 0, "bike");
+  plan = addDay(plan);
+  assert.equal(plan.days.length, 2);
+  assert.deepEqual(
+    [plan.days[1].start, plan.days[1].mode],
+    [570, "bike"],
+    "new day copies the last day's settings",
+  );
+  assert.equal(setDayStart(plan, 0, 99999).days[0].start, 1439);
+  assert.equal(setDayStart(plan, 9, 60), plan);
+  for (let i = 0; i < 20; i++) plan = addDay(plan);
+  assert.equal(plan.days.length, MAX_DAYS);
+
+  let trip = planOf([stop(1)], [stop(2)], [stop(3)]);
+  trip = removeDay(trip, 1);
+  assert.deepEqual(
+    allStops(trip).map((s) => s.name),
+    ["Stop 1", "Stop 3"],
+  );
+  const single = removeDay(planOf([stop(1)]), 0);
+  assert.equal(single.days.length, 1);
+  assert.equal(stopCount(single), 0);
+  assert.equal(removeDay(trip, 9), trip);
 });
 
 test("placeToStop needs a valid map position", () => {
@@ -241,16 +325,24 @@ test("placeToStop needs a valid map position", () => {
 
 // ---------- shareable link ----------
 
-test("plans round-trip through the URL token, including non-Latin text", () => {
+test("trips round-trip through the URL token, including non-Latin text", () => {
   const plan: Plan = {
     destination: "京都",
-    stops: [
-      stop(1, {
-        name: "喫茶 ローズ",
-        address: "1 Teramachi",
-        hours: "Mo-Su 09:00-18:00",
-      }),
-      stop(2, { category: "food", dwell: 90 }),
+    days: [
+      {
+        start: 540,
+        mode: "bike",
+        stops: [
+          stop(1, {
+            name: "喫茶 ローズ",
+            address: "1 Teramachi",
+            hours: "Mo-Su 09:00-18:00",
+          }),
+          stop(2, { category: "food", dwell: 90 }),
+        ],
+      },
+      { start: 660, mode: "drive", stops: [stop(3)] },
+      { start: 600, mode: "walk", stops: [] },
     ],
   };
   const token = encodePlan(plan);
@@ -258,29 +350,58 @@ test("plans round-trip through the URL token, including non-Latin text", () => {
   assert.deepEqual(decodePlan(token), plan);
 });
 
+test("old single-day links still open as one day", () => {
+  const legacy = Buffer.from(
+    JSON.stringify({
+      v: 1,
+      d: "Kyoto",
+      s: [
+        ["A", 35.01, 135.76, "c", 40],
+        ["B", 35.02, 135.77, "f", 70],
+      ],
+    }),
+  ).toString("base64url");
+  const plan = decodePlan(legacy);
+  assert.ok(plan);
+  assert.equal(plan.days.length, 1);
+  assert.deepEqual(
+    plan.days[0].stops.map((s) => s.name),
+    ["A", "B"],
+  );
+  assert.equal(plan.days[0].mode, "walk");
+  assert.equal(plan.destination, "Kyoto");
+});
+
 test("decodePlan rejects hostile or malformed tokens", () => {
   const enc = (value: unknown) =>
     Buffer.from(JSON.stringify(value)).toString("base64url");
+  const day = (stops: unknown) => [600, "w", stops];
   assert.equal(decodePlan(""), null);
   assert.equal(decodePlan("not base64 !!"), null);
-  assert.equal(decodePlan(enc({ v: 2, s: [] })), null);
-  assert.equal(decodePlan(enc({ v: 1, s: "x" })), null);
+  assert.equal(decodePlan(enc({ v: 3, y: [] })), null);
+  assert.equal(decodePlan(enc({ v: 2, y: "x" })), null);
   assert.equal(
-    decodePlan(enc({ v: 1, s: [["A", 99, 0, "c", 30]] })),
+    decodePlan(enc({ v: 2, y: [day("x")] })),
+    null,
+    "stops must be a list",
+  );
+  assert.equal(
+    decodePlan(enc({ v: 2, y: [day([["A", 99, 0, "c", 30]])] })),
     null,
     "lat range",
   );
   assert.equal(
-    decodePlan(enc({ v: 1, s: [["A", 1, 1, "z", 30]] })),
+    decodePlan(enc({ v: 2, y: [day([["A", 1, 1, "z", 30]])] })),
     null,
     "category",
   );
   assert.equal(
-    decodePlan(enc({ v: 1, s: [["", 1, 1, "c", 30]] })),
+    decodePlan(enc({ v: 2, y: [day([["", 1, 1, "c", 30]])] })),
     null,
     "name",
   );
-  assert.equal(decodePlan("A".repeat(20000)), null, "too long");
+  assert.equal(decodePlan("A".repeat(30000)), null, "too long");
+
   const many = Array.from({ length: 50 }, (_, i) => [
     `S${i}`,
     1 + i / 100,
@@ -288,12 +409,39 @@ test("decodePlan rejects hostile or malformed tokens", () => {
     "c",
     30,
   ]);
-  assert.equal(decodePlan(enc({ v: 1, s: many }))?.stops.length, MAX_STOPS);
-  const dirty = decodePlan(
-    enc({ v: 1, d: "<b>x</b>\u0000", s: [["A\u0007B", 1, 1, "c", 9999]] }),
+  assert.equal(
+    decodePlan(enc({ v: 2, y: [day(many)] }))?.days[0].stops.length,
+    MAX_STOPS_PER_DAY,
   );
-  assert.equal(dirty?.stops[0].name, "A B");
-  assert.equal(dirty?.stops[0].dwell, 300);
+  const manyDays = Array.from({ length: 30 }, (_, i) =>
+    day([[`S${i}`, 1 + i / 100, 1, "c", 30]]),
+  );
+  assert.equal(decodePlan(enc({ v: 2, y: manyDays }))?.days.length, MAX_DAYS);
+
+  const dup = [["A", 1, 1, "c", 30]];
+  const deduped = decodePlan(enc({ v: 2, y: [day(dup), day(dup)] }));
+  assert.equal(
+    stopCount(deduped as Plan),
+    1,
+    "same place cannot be on two days",
+  );
+
+  const dirty = decodePlan(
+    enc({
+      v: 2,
+      d: "<b>x</b>\u0000",
+      y: [[99999, "q", [["A\u0007B", 1, 1, "c", 9999]]]],
+    }),
+  );
+  assert.equal(dirty?.days[0].stops[0].name, "A B");
+  assert.equal(dirty?.days[0].stops[0].dwell, 300);
+  assert.equal(dirty?.days[0].start, 1439, "start clamped");
+  assert.equal(dirty?.days[0].mode, "walk", "unknown mode falls back");
+  assert.equal(
+    decodePlan(enc({ v: 2, y: [] }))?.days.length,
+    1,
+    "always at least one day",
+  );
 });
 
 test("tokenFromHash only accepts the expected shape", () => {
@@ -426,4 +574,243 @@ test("directionLinks encode coordinates and travel mode", () => {
   assert.ok(links.amap.includes("from=135.76,35.01,A"));
   assert.ok(links.amap.includes("to=135.77,35.02,Caf%C3%A9%20B"));
   assert.ok(links.amap.includes("mode=walk"));
+});
+
+test("parseSteps keeps clean, bounded written directions", () => {
+  const steps = parseSteps([
+    { instruction: "Head  north on\nMain St", distance: 120.4 },
+    { instruction: "   ", distance: 5 },
+    { instruction: 42 as unknown as string, distance: 5 },
+    { instruction: "Arrive", distance: "x" as unknown as number },
+    { instruction: "x".repeat(500), distance: 1 },
+  ]);
+  assert.deepEqual(steps.slice(0, 2), [
+    { text: "Head north on Main St", distanceM: 120 },
+    { text: "Arrive", distanceM: 0 },
+  ]);
+  assert.equal(steps.length, 3);
+  assert.equal(steps[2].text.length, 200);
+  assert.deepEqual(parseSteps(undefined), []);
+  assert.equal(
+    parseSteps(
+      Array.from({ length: 200 }, () => ({ instruction: "Go", distance: 1 })),
+    ).length,
+    60,
+  );
+});
+
+test("parseDirections returns steps per leg and tolerates their absence", () => {
+  const result = parseDirections(
+    {
+      features: [
+        {
+          geometry: {
+            coordinates: [
+              [135, 35],
+              [135.01, 35.01],
+            ],
+          },
+          properties: {
+            segments: [
+              {
+                duration: 60,
+                distance: 80,
+                steps: [{ instruction: "Go", distance: 80 }],
+              },
+            ],
+          },
+        },
+      ],
+    },
+    2,
+  );
+  assert.deepEqual(result.steps, [[{ text: "Go", distanceM: 80 }]]);
+  const bare = parseDirections(
+    {
+      features: [
+        {
+          geometry: {
+            coordinates: [
+              [1, 1],
+              [2, 2],
+            ],
+          },
+          properties: { segments: [{ duration: 1, distance: 1 }] },
+        },
+      ],
+    },
+    2,
+  );
+  assert.deepEqual(bare.steps, [[]]);
+});
+
+test("googleDayLink builds one multi-stop link within Google's limits", () => {
+  const stops = [1, 2, 3, 4].map((n) => ({
+    lat: 35 + n / 100,
+    lon: 135 + n / 100,
+  }));
+  const url = new URL(googleDayLink(stops, "bike") as string);
+  assert.equal(url.searchParams.get("origin"), "35.01,135.01");
+  assert.equal(url.searchParams.get("destination"), "35.04,135.04");
+  assert.equal(url.searchParams.get("waypoints"), "35.02,135.02|35.03,135.03");
+  assert.equal(url.searchParams.get("travelmode"), "bicycling");
+  assert.equal(googleDayLink(stops.slice(0, 1), "walk"), null);
+  assert.equal(
+    googleDayLink(
+      Array.from({ length: 12 }, () => stops[0]),
+      "walk",
+    ),
+    null,
+  );
+  const two = new URL(googleDayLink(stops.slice(0, 2), "walk") as string);
+  assert.equal(two.searchParams.get("waypoints"), null);
+});
+
+test("planRoute without a key still returns a complete, labelled estimate", async () => {
+  const { planRoute } = await import("../src/lib/ors.ts");
+  const points = [0, 5, 1, 4].map((x) => ({ lat: 35, lon: 135 + x * 0.01 }));
+  const result = await planRoute(points, "walk", true, {
+    orsKey: undefined,
+    orsBaseUrl: "https://example.invalid",
+    orsDailyCap: 10,
+  });
+  assert.equal(result.source, "estimate");
+  assert.match(result.note ?? "", /no routing key/i);
+  assert.equal(result.order[0], 0);
+  assert.equal(new Set(result.order).size, 4);
+  assert.equal(result.legs.length, 3);
+});
+
+// ---------- planRoute against a mocked OpenRouteService ----------
+
+type Recorded = { url: string; auth: string | null; body: any };
+
+function mockOrs(
+  respond: (url: string, body: any) => { status?: number; json?: unknown },
+): { calls: Recorded[]; restore: () => void } {
+  const original = globalThis.fetch;
+  const calls: Recorded[] = [];
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    const body = JSON.parse(String(init?.body ?? "null"));
+    calls.push({
+      url,
+      auth: new Headers(init?.headers).get("authorization"),
+      body,
+    });
+    const reply = respond(url, body);
+    return new Response(JSON.stringify(reply.json ?? {}), {
+      status: reply.status ?? 200,
+    });
+  }) as typeof fetch;
+  return { calls, restore: () => (globalThis.fetch = original) };
+}
+
+const ORS = {
+  orsKey: "test-key",
+  orsBaseUrl: "https://ors.example/openrouteservice",
+  orsDailyCap: 100,
+};
+
+test("planRoute optimises with the matrix, then returns road legs, geometry and steps", async () => {
+  const { planRoute } = await import("../src/lib/ors.ts");
+  // Stops on a line at x = 0, 5, 1: best order is 0, 2, 1.
+  const points = [0, 5, 1].map((x) => ({ lat: 10, lon: 20 + x * 0.001 }));
+  const xs = [0, 5, 1];
+  const { calls, restore } = mockOrs((url, body) => {
+    if (url.includes("/v2/matrix/")) {
+      return {
+        json: { durations: xs.map((a) => xs.map((b) => Math.abs(a - b) * 60)) },
+      };
+    }
+    const n = body.coordinates.length;
+    return {
+      json: {
+        features: [
+          {
+            geometry: { coordinates: body.coordinates },
+            properties: {
+              segments: Array.from({ length: n - 1 }, () => ({
+                duration: 300,
+                distance: 400,
+                steps: [{ instruction: "Head east", distance: 400 }],
+              })),
+            },
+          },
+        ],
+      },
+    };
+  });
+  try {
+    const result = await planRoute(points, "bike", true, ORS);
+    assert.equal(result.source, "openrouteservice");
+    assert.deepEqual(result.order, [0, 2, 1]);
+    assert.equal(result.legs.length, 2);
+    assert.deepEqual(result.steps?.[0], [
+      { text: "Head east", distanceM: 400 },
+    ]);
+
+    assert.equal(calls.length, 2);
+    assert.equal(
+      calls[0].url,
+      "https://ors.example/openrouteservice/v2/matrix/cycling-regular",
+    );
+    assert.equal(calls[0].auth, "test-key");
+    assert.deepEqual(calls[0].body.locations[1], [20.005, 10]);
+    assert.equal(
+      calls[1].url,
+      "https://ors.example/openrouteservice/v2/directions/cycling-regular/geojson",
+    );
+    assert.equal(calls[1].body.instructions, true);
+    // Directions are requested in the optimised order, as [lon, lat].
+    assert.deepEqual(
+      calls[1].body.coordinates.map((c: number[]) => c[0]),
+      [20, 20.001, 20.005],
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("planRoute falls back to labelled estimates when the service fails", async () => {
+  const { planRoute } = await import("../src/lib/ors.ts");
+  const points = [0, 1, 2].map((x) => ({ lat: 11, lon: 21 + x * 0.001 }));
+  const { restore } = mockOrs(() => ({ status: 500 }));
+  try {
+    const result = await planRoute(points, "drive", false, ORS);
+    assert.equal(result.source, "estimate");
+    assert.match(result.note ?? "", /could not find or return a route/i);
+    assert.equal(result.legs.length, 2);
+    assert.deepEqual(result.order, [0, 1, 2]);
+  } finally {
+    restore();
+  }
+});
+
+test("planRoute rejects a malformed service reply instead of trusting it", async () => {
+  const { planRoute } = await import("../src/lib/ors.ts");
+  const points = [0, 1].map((x) => ({ lat: 12, lon: 22 + x * 0.001 }));
+  const { restore } = mockOrs(() => ({
+    json: { features: [{ properties: { segments: [] } }] },
+  }));
+  try {
+    const result = await planRoute(points, "walk", false, ORS);
+    assert.equal(result.source, "estimate");
+  } finally {
+    restore();
+  }
+});
+
+test("planRoute stops calling the service once the daily allowance is used", async () => {
+  const { planRoute } = await import("../src/lib/ors.ts");
+  const { calls, restore } = mockOrs(() => ({ status: 500 }));
+  try {
+    const capped = { ...ORS, orsDailyCap: 0 };
+    const points = [0, 1].map((x) => ({ lat: 13, lon: 23 + x * 0.001 }));
+    const result = await planRoute(points, "walk", false, capped);
+    assert.equal(calls.length, 0);
+    assert.match(result.note ?? "", /allowance/i);
+  } finally {
+    restore();
+  }
 });

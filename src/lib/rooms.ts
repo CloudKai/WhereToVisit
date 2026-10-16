@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { decodePlan, type Stop } from "./plan.ts";
+import { allStops, type Day, decodePlan, newDay } from "./plan.ts";
 import {
   cleanName,
   computeTallies,
@@ -23,12 +23,18 @@ export class RoomError extends Error {
 }
 
 type RoomMeta = {
-  v: 1;
+  v: 2;
   destination?: string;
-  stops: Stop[];
+  days: Day[];
   createdAt: number;
   ownerHash: string;
   closed: boolean;
+};
+
+/** Version-1 rooms held one flat list of stops. */
+type LegacyRoomMeta = Omit<RoomMeta, "v" | "days"> & {
+  v: 1;
+  stops: Day["stops"];
 };
 
 const metaKey = (id: string) => `wtv:room:${id}`;
@@ -60,8 +66,12 @@ async function loadMeta(store: Store, id: string): Promise<RoomMeta> {
   if (!raw)
     throw new RoomError(404, "This voting link has expired or doesn’t exist.");
   try {
-    const meta = JSON.parse(raw) as RoomMeta;
-    if (meta.v !== 1 || !Array.isArray(meta.stops)) throw new Error("bad meta");
+    const meta = JSON.parse(raw) as RoomMeta | LegacyRoomMeta;
+    if (meta.v === 1 && Array.isArray(meta.stops)) {
+      const { stops, v: _v, ...rest } = meta;
+      return { ...rest, v: 2, days: [{ ...newDay(), stops }] };
+    }
+    if (meta.v !== 2 || !Array.isArray(meta.days)) throw new Error("bad meta");
     return meta;
   } catch {
     throw new RoomError(500, "This room’s data is damaged.");
@@ -78,28 +88,27 @@ function requireOwner(meta: RoomMeta, ownerKey: string | undefined) {
   }
 }
 
-function stopsFromToken(token: unknown): {
-  stops: Stop[];
-  destination?: string;
-} {
+/** Rooms only keep days that have stops, renumbered from Day 1. */
+function daysFromToken(token: unknown): { days: Day[]; destination?: string } {
   const plan = typeof token === "string" ? decodePlan(token) : null;
-  if (!plan || plan.stops.length === 0) {
-    throw new RoomError(400, "Add at least one stop to your day first.");
+  const days = plan?.days.filter((day) => day.stops.length > 0) ?? [];
+  if (!plan || days.length === 0) {
+    throw new RoomError(400, "Add at least one stop to your trip first.");
   }
-  return { stops: plan.stops, destination: plan.destination };
+  return { days, destination: plan.destination };
 }
 
 export async function createRoom(
   store: Store,
   planToken: unknown,
 ): Promise<{ id: string; ownerKey: string }> {
-  const { stops, destination } = stopsFromToken(planToken);
+  const { days, destination } = daysFromToken(planToken);
   const id = newToken(16);
   const ownerKey = newToken(24);
   const meta: RoomMeta = {
-    v: 1,
+    v: 2,
     ...(destination ? { destination } : {}),
-    stops,
+    days,
     createdAt: Date.now(),
     ownerHash: sha256(`owner:${ownerKey}`),
     closed: false,
@@ -142,11 +151,13 @@ export async function getRoom(
     if (isVote(value)) votes[field] = value;
   }
 
-  const { participants, tallies } = computeTallies(meta.stops, people, votes);
+  const stops = allStops({ days: meta.days });
+  const { participants, tallies } = computeTallies(stops, people, votes);
   const view: RoomView = {
     id,
     destination: meta.destination,
-    stops: meta.stops,
+    days: meta.days,
+    stops,
     closed: meta.closed,
     createdAt: meta.createdAt,
     participants,
@@ -187,7 +198,7 @@ export async function castVote(
   if (!name) throw new RoomError(400, "Enter a name (1–40 characters).");
   if (
     typeof input.stopId !== "string" ||
-    !meta.stops.some((s) => s.id === input.stopId)
+    !allStops({ days: meta.days }).some((s) => s.id === input.stopId)
   ) {
     throw new RoomError(400, "That place isn’t in this plan.");
   }
@@ -235,16 +246,16 @@ export async function updateStops(
 ): Promise<void> {
   const meta = await loadMeta(store, id);
   requireOwner(meta, ownerKey);
-  const { stops, destination } = stopsFromToken(planToken);
+  const { days, destination } = daysFromToken(planToken);
   const next: RoomMeta = {
     ...meta,
-    stops,
+    days,
     ...(destination ? { destination } : {}),
   };
   await store.set(metaKey(id), JSON.stringify(next), ROOM_TTL_SECONDS);
 
   // Drop votes for places that were removed from the plan.
-  const keep = new Set(stops.map((s) => s.id));
+  const keep = new Set(allStops({ days }).map((s) => s.id));
   const votes = await store.hgetall(votesKey(id));
   for (const field of Object.keys(votes)) {
     const stopId = field.slice(field.indexOf("|") + 1);
