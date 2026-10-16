@@ -60,6 +60,16 @@ export default function About() {
         have no source text.
       </p>
 
+      <h2>Why a city’s results can cluster in one district</h2>
+      <p>
+        The first view of a city looks around its centre point and shows the top
+        few places of each type, ordered by how complete their information is.
+        Districts with detailed guides and map data therefore come first, and
+        places in thinly documented districts can be crowded out. Move the map
+        to the part of the city you care about and press “Search this area” to
+        see that area on its own terms.
+      </p>
+
       <h2>Photos</h2>
       <p>
         Photos come from Wikimedia Commons and always link to their file page

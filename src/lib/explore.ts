@@ -1,4 +1,5 @@
 import { ConfigError, getConfig } from "./config.ts";
+import { inBounds } from "./geo.ts";
 import { addPhotos } from "./images.ts";
 import { fetchOsmPlaces } from "./geoapify.ts";
 import { TtlCache, withTimeout } from "./http.ts";
@@ -15,7 +16,26 @@ export const HEADLINE_PER_TYPE = 5;
 const results = new TtlCache<ExploreResult>(6 * 3600 * 1000, 100);
 
 function cacheKey(d: Destination): string {
-  return `${d.lat.toFixed(3)},${d.lon.toFixed(3)},${d.radiusM}`;
+  const area = d.bounds
+    ? [d.bounds.south, d.bounds.west, d.bounds.north, d.bounds.east]
+        .map((n) => n.toFixed(4))
+        .join(",")
+    : "";
+  return `${d.lat.toFixed(3)},${d.lon.toFixed(3)},${d.radiusM},${area}`;
+}
+
+/** Keeps only places inside the rectangle; places without a position cannot be proven inside. */
+export function withinBounds<T extends { lat?: number; lon?: number }>(
+  places: T[],
+  bounds: Destination["bounds"],
+): T[] {
+  if (!bounds) return places;
+  return places.filter(
+    (p) =>
+      p.lat !== undefined &&
+      p.lon !== undefined &&
+      inBounds({ lat: p.lat, lon: p.lon }, bounds),
+  );
 }
 
 function describe(reason: unknown): string {
@@ -89,7 +109,9 @@ export async function explore(
   const merged = mergePlaces(
     destination,
     wikivoyage.status === "fulfilled" ? wikivoyage.value : [],
-    osm.status === "fulfilled" ? osm.value : [],
+    osm.status === "fulfilled"
+      ? withinBounds(osm.value, destination.bounds)
+      : [],
   );
   const editorCandidates = capPerType(merged.editorPicks, MAX_PER_TYPE);
   const nearbyCandidates = capPerType(merged.nearby, MAX_PER_TYPE);

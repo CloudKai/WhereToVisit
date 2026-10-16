@@ -1,6 +1,14 @@
 export type Category =
   "cafe" | "food" | "shopping" | "attraction" | "museum" | "park";
 
+/** A map rectangle. Never crosses the antimeridian. */
+export type Bounds = {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
+
 export type Destination = {
   name: string;
   country?: string;
@@ -8,6 +16,8 @@ export type Destination = {
   lon: number;
   /** Search radius in metres around the destination centre. */
   radiusM: number;
+  /** When set, only places inside this rectangle count ("Search this area"). */
+  bounds?: Bounds;
 };
 
 export type Source = {

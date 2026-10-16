@@ -1,6 +1,12 @@
-import { isLat, isLon } from "./geo.ts";
+import {
+  areaProblem,
+  circleCovering,
+  isLat,
+  isLon,
+  isValidBounds,
+} from "./geo.ts";
 import { type CategoryFilter, parseCategoryFilter } from "./categories.ts";
-import type { Destination } from "./types.ts";
+import type { Bounds, Destination } from "./types.ts";
 
 export const MIN_RADIUS_M = 500;
 export const MAX_RADIUS_M = 10000;
@@ -25,19 +31,40 @@ function cleanLabel(
   return label ? label : undefined;
 }
 
+/** Reads "south,west,north,east"; null unless it is a searchable rectangle. */
+export function parseBounds(text: string | undefined): Bounds | null {
+  const parts = text?.split(",").map((part) => part.trim());
+  if (!parts || parts.length !== 4 || parts.some((part) => part === "")) {
+    return null;
+  }
+  const [south, west, north, east] = parts.map(Number);
+  const bounds: Bounds = { south, west, north, east };
+  return isValidBounds(bounds) && areaProblem(bounds) === null ? bounds : null;
+}
+
 /** Validates untrusted URL parameters; returns null when unusable. */
 export function parseDestination(params: Params): Destination | null {
   const name = cleanLabel(first(params.name), 80);
+  if (!name) return null;
+  const country = cleanLabel(first(params.country), 60);
+
+  // A valid map rectangle ("Search this area") takes precedence.
+  const bounds = parseBounds(first(params.bbox));
+  if (bounds) {
+    const circle = circleCovering(bounds);
+    return { name, country, ...circle, bounds };
+  }
+
   const latText = first(params.lat)?.trim();
   const lonText = first(params.lon)?.trim();
-  if (!name || !latText || !lonText) return null;
+  if (!latText || !lonText) return null;
   const lat = Number(latText);
   const lon = Number(lonText);
   if (!isLat(lat) || !isLon(lon)) return null;
   const radius = Number(first(params.r));
   return {
     name,
-    country: cleanLabel(first(params.country), 60),
+    country,
     lat,
     lon,
     radiusM: Number.isFinite(radius)
@@ -71,7 +98,9 @@ export function parseFilter(
 }
 
 export function exploreHref(
-  d: Pick<Destination, "name" | "country" | "lat" | "lon" | "radiusM">,
+  d: Pick<Destination, "name" | "country" | "lat" | "lon" | "radiusM"> & {
+    bounds?: Bounds;
+  },
   filter: CategoryFilter = "all",
 ): string {
   const query = new URLSearchParams({
@@ -81,6 +110,13 @@ export function exploreHref(
     r: String(d.radiusM),
   });
   if (d.country) query.set("country", d.country);
+  if (d.bounds) {
+    const { south, west, north, east } = d.bounds;
+    query.set(
+      "bbox",
+      [south, west, north, east].map((n) => n.toFixed(5)).join(","),
+    );
+  }
   if (filter !== "all") query.set("type", filter);
   return `/explore?${query.toString()}`;
 }

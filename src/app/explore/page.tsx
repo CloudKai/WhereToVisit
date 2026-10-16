@@ -152,7 +152,11 @@ export default async function Explore({
   return (
     <div className="page-section">
       <header className="explore-head">
-        <p className="eyebrow">Places to eat, shop and see in</p>
+        <p className="eyebrow">
+          {destination.bounds
+            ? "Places in the map area you chose · near"
+            : "Places to eat, shop and see in"}
+        </p>
         <h1>{place}</h1>
         <p className="lead">
           {result.editorPicks.length > 0
@@ -174,26 +178,34 @@ export default async function Explore({
             </Link>
           ))}
         </nav>
-        <nav className="filters" aria-label="Search area">
-          <span className="filter-label">Search area</span>
-          {AREA_OPTIONS.map((option) => {
-            const active =
-              nearestArea(destination.radiusM).radiusM === option.radiusM;
-            return (
-              <Link
-                key={option.radiusM}
-                href={exploreHref(
-                  { ...destination, radiusM: option.radiusM },
-                  filter,
-                )}
-                aria-current={active ? "true" : undefined}
-                className={active ? "chip active" : "chip"}
-              >
-                {option.label} · {option.detail}
-              </Link>
-            );
-          })}
-        </nav>
+        {destination.bounds ? (
+          <p className="area-banner hint">
+            Showing only places inside the area you chose on the map. Move the
+            map and press “Search this area” to look somewhere else, or{" "}
+            <Link href="/">start a new search</Link>.
+          </p>
+        ) : (
+          <nav className="filters" aria-label="Search area">
+            <span className="filter-label">Search area</span>
+            {AREA_OPTIONS.map((option) => {
+              const active =
+                nearestArea(destination.radiusM).radiusM === option.radiusM;
+              return (
+                <Link
+                  key={option.radiusM}
+                  href={exploreHref(
+                    { ...destination, radiusM: option.radiusM },
+                    filter,
+                  )}
+                  aria-current={active ? "true" : undefined}
+                  className={active ? "chip active" : "chip"}
+                >
+                  {option.label} · {option.detail}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
       </header>
 
       {result.notes.map((note) => (
@@ -202,7 +214,14 @@ export default async function Explore({
         </p>
       ))}
 
-      {markers.length > 0 && <PlacesMap markers={markers} />}
+      {(markers.length > 0 || destination.bounds) && (
+        <PlacesMap
+          markers={markers}
+          place={{ name: destination.name, country: destination.country }}
+          filter={filter}
+          viewBounds={destination.bounds}
+        />
+      )}
 
       {picks.length > 0 && (
         <section aria-labelledby="picks-heading">

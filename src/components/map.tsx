@@ -2,6 +2,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { GeoJSONSource, Map as MapLibreMap, Marker } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
+import type { Bounds } from "@/lib/types";
 
 /** Free vector tiles from OpenFreeMap (OpenStreetMap data). No key needed. */
 const STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
@@ -27,6 +28,10 @@ type Props = {
   label: string;
   selectedId?: string;
   onSelect?: (id: string) => void;
+  /** Show exactly this rectangle instead of fitting the pins. */
+  viewBounds?: Bounds;
+  /** Called when the person pans or zooms the map (not when the app moves it). */
+  onUserMove?: (bounds: Bounds) => void;
   className?: string;
 };
 
@@ -37,6 +42,10 @@ function markerKey(markers: MapMarker[]): string {
         `${m.id}|${m.lat}|${m.lon}|${m.kind}|${m.badge ?? ""}|${m.group ?? ""}`,
     )
     .join(";");
+}
+
+function viewKey(b: Bounds | undefined): string {
+  return b ? `${b.south},${b.west},${b.north},${b.east}` : "";
 }
 
 function lineKey(line: [number, number][] | undefined): string {
@@ -50,17 +59,19 @@ export function MapCanvas({
   label,
   selectedId,
   onSelect,
+  viewBounds,
+  onUserMove,
   className,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const ctx = useRef<{ map: MapLibreMap; lib: MapLibre } | null>(null);
   const elements = useRef(new Map<string, HTMLElement>());
-  const latest = useRef({ markers, line, onSelect });
+  const latest = useRef({ markers, line, onSelect, viewBounds, onUserMove });
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    latest.current = { markers, line, onSelect };
+    latest.current = { markers, line, onSelect, viewBounds, onUserMove };
   });
 
   // Create the map once, in the browser only.
@@ -92,6 +103,18 @@ export function MapCanvas({
           new lib.NavigationControl({ showCompass: false }),
           "top-right",
         );
+        // Only gestures and the zoom buttons carry an originalEvent; moves the
+        // app makes itself (fitting the pins) do not, and are ignored here.
+        map.on("moveend", (event: { originalEvent?: unknown }) => {
+          if (!event.originalEvent || !map) return;
+          const b = map.getBounds();
+          latest.current.onUserMove?.({
+            south: b.getSouth(),
+            west: b.getWest(),
+            north: b.getNorth(),
+            east: b.getEast(),
+          });
+        });
         map.on("load", () => {
           loaded = true;
           clearTimeout(giveUp);
@@ -114,6 +137,7 @@ export function MapCanvas({
 
   const mKey = markerKey(markers);
   const lKey = lineKey(line);
+  const vKey = viewKey(viewBounds);
 
   // Draw pins and the route whenever they change.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mKey/lKey summarise markers/line; latest holds the values
@@ -178,7 +202,16 @@ export function MapCanvas({
       });
     }
 
-    if (pins.length === 1) {
+    const view = latest.current.viewBounds;
+    if (view) {
+      map.fitBounds(
+        [
+          [view.west, view.south],
+          [view.east, view.north],
+        ],
+        { padding: 0, duration: 0 },
+      );
+    } else if (pins.length === 1) {
       map.jumpTo({ center: [pins[0].lon, pins[0].lat], zoom: 15 });
     } else if (pins.length > 1) {
       const bounds = new lib.LngLatBounds();
@@ -190,7 +223,7 @@ export function MapCanvas({
     return () => {
       for (const marker of created) marker.remove();
     };
-  }, [ready, mKey, lKey]);
+  }, [ready, mKey, lKey, vKey]);
 
   // Highlight the selected pin.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run after pins are rebuilt

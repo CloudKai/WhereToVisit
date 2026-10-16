@@ -1,4 +1,4 @@
-import { haversineKm, isLat, isLon } from "./geo.ts";
+import { haversineKm, inBounds, isLat, isLon } from "./geo.ts";
 import { getJson } from "./http.ts";
 import {
   cleanWikitext,
@@ -292,10 +292,22 @@ export async function fetchWikivoyagePlaces(
     const text = page.revisions?.[0]?.slots?.main?.content;
     if (page.missing || !text) continue;
     for (const listing of parseListings(text, page.title)) {
-      if (listing.lat !== undefined && listing.lon !== undefined) {
+      const located = listing.lat !== undefined && listing.lon !== undefined;
+      if (destination.bounds) {
+        // A searched map area needs a position to prove a place is inside it.
+        if (!located) continue;
+        if (
+          !inBounds(
+            { lat: listing.lat as number, lon: listing.lon as number },
+            destination.bounds,
+          )
+        ) {
+          continue;
+        }
+      } else if (located) {
         const km = haversineKm(destination, {
-          lat: listing.lat,
-          lon: listing.lon,
+          lat: listing.lat as number,
+          lon: listing.lon as number,
         });
         if (km > maxKm) continue;
       }

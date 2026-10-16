@@ -26,6 +26,11 @@ reasons, the map and multi-day routing, and companion voting.
   Malls & shopping · Attractions · Museums & culture · Parks & nature, each with a
   count. "All" shows the top 5 of each type; choose a type to see more. Editor
   picks come from Wikivoyage's Eat, Drink, See, Do and Buy listings.
+- **Search this area.** Move or zoom the map, then press "Search this area" (like
+  Google Maps) to rebuild the list for exactly what is on screen — editor picks
+  first, then the best-documented nearby places, with the same type filters. Areas
+  up to about 20 km across can be searched; wider views ask you to zoom in. The
+  searched rectangle is in the page link, so it can be bookmarked and shared.
 - **Photos where a trustworthy free one exists.** A place's own Wikidata /
   Wikivoyage image, or (for sights, parks, museums and malls) a Wikimedia Commons
   photo geotagged at the spot, labelled "Photo taken nearby" when it isn't clearly
