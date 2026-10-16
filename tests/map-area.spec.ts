@@ -117,13 +117,14 @@ test("fictional map and list share selection while explicit area search keeps ac
     for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/discover");
+      await page.getByRole("button", { name: "Change filters" }).click();
       await expect(
         page.getByText("Fictional map — development behavior only", {
           exact: true,
         }),
       ).toBeVisible();
       const first = page.getByRole("article").first();
-      await first.getByRole("button", { name: "Select place" }).focus();
+      await first.getByRole("button", { name: "Inspect branch" }).focus();
       await page.keyboard.press("Enter");
       await expect(first.locator("details")).toHaveAttribute("open", "");
       await expect(
@@ -180,7 +181,7 @@ test("fictional map and list share selection while explicit area search keeps ac
       await page
         .getByRole("article")
         .first()
-        .getByRole("button", { name: "Select place" })
+        .getByRole("button", { name: "Inspect branch" })
         .click();
       await page.screenshot({
         path: testInfo.outputPath(`map-area-${width}.png`),
@@ -201,6 +202,7 @@ test("pending movement, reordered responses and reset cannot publish a stale are
   writeFileSync(".data/catalogue-scenario.json", JSON.stringify(mapFixture()));
   try {
     await page.goto("/discover");
+    await page.getByRole("button", { name: "Change filters" }).click();
     const held: { complete: () => Promise<void>; west: string | null }[] = [];
     await page.route("**/api/catalogue?*", async (route) => {
       const url = new URL(route.request().url());
@@ -283,10 +285,11 @@ test("map failure preserves selected details and clipped or outside searches com
   writeFileSync(".data/catalogue-scenario.json", JSON.stringify(mapFixture()));
   try {
     await page.goto("/discover");
+    await page.getByRole("button", { name: "Change filters" }).click();
     await page
       .getByRole("article")
       .first()
-      .getByRole("button", { name: "Select place" })
+      .getByRole("button", { name: "Inspect branch" })
       .click();
     await page.getByRole("button", { name: "Simulate map failure" }).click();
     await expect(
@@ -341,6 +344,7 @@ test("development map fixtures stop when the current publication becomes real", 
   writeFileSync(".data/catalogue-scenario.json", JSON.stringify(mapFixture()));
   try {
     await page.goto("/discover");
+    await page.getByRole("button", { name: "Change filters" }).click();
     await expect(
       page.getByText("Fictional map — development behavior only", {
         exact: true,
@@ -379,6 +383,7 @@ test("reselecting the same pin or list place reopens its native source disclosur
   writeFileSync(".data/catalogue-scenario.json", JSON.stringify(mapFixture()));
   try {
     await page.goto("/discover");
+    await page.getByRole("button", { name: "Change filters" }).click();
     const place = page.getByRole("article").first();
     const disclosure = place.locator("details");
     const summary = place.getByText("Sources and place details", {
@@ -398,7 +403,7 @@ test("reselecting the same pin or list place reopens its native source disclosur
     await summary.focus();
     await page.keyboard.press("Enter");
     await expect(disclosure).not.toHaveAttribute("open", "");
-    await place.getByRole("button", { name: "Select place" }).focus();
+    await place.getByRole("button", { name: "Inspect branch" }).focus();
     await page.keyboard.press("Enter");
     await expect(disclosure).toHaveAttribute("open", "");
     await expect(pin).toHaveAttribute("aria-pressed", "true");

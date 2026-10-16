@@ -76,16 +76,24 @@ test("stale browser draft reload reviews the current chosen stops before another
 }) => {
   const trip = await setup(page.request);
   await select(page.request, trip.id, true);
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   const panel = page.getByRole("region", { name: "Plan my day" });
   await panel.getByLabel("Visit date (Shanghai)").fill("2026-10-25");
   await select(page.request, trip.id, false);
   await panel.getByRole("button", { name: "Save one-day draft" }).click();
   await expect(panel.getByRole("alert")).toContainText("chosen Places changed");
   await panel.getByRole("button", { name: "Reload day request" }).click();
+  await page
+    .getByRole("navigation", { name: "Trip views" })
+    .getByRole("link", { name: "Places", exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: "Saved shortlist" }).getByRole("checkbox"),
   ).not.toBeChecked();
+  await page
+    .getByRole("navigation", { name: "Trip views" })
+    .getByRole("link", { name: "Day", exact: true })
+    .click();
   await expect(panel).toContainText("0 confirmed Places selected");
   await panel.getByLabel("Visit date (Shanghai)").fill("2026-10-25");
   await panel.getByRole("button", { name: "Save one-day draft" }).click();
@@ -287,14 +295,14 @@ test("unresolved requests, guest and other-owner authority cannot change chosen 
     ])
       expect(serialized).not.toContain(`"${privateField}"`);
     const guestPage = await guest.newPage();
-    await guestPage.goto(`/shared-trips/${trip.id}`);
+    await guestPage.goto(`/shared-trips/${trip.id}?view=day`);
     await expect(
       guestPage.getByRole("region", { name: "Shared day-plan context" }),
     ).toContainText("Vegetarian");
     await expect(
       guestPage.getByRole("button", { name: "Save one-day draft" }),
     ).toHaveCount(0);
-    await page.goto("/trips");
+    await page.goto("/trips?view=day");
     await expect(
       page.getByRole("region", { name: "Plan my day" }),
     ).toContainText("explicitly confirm a canonical branch and address");
@@ -388,7 +396,7 @@ test("failed durable writes and lost responses preserve captured draft retry", a
 }) => {
   const trip = await setup(page.request);
   await select(page.request, trip.id, true);
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   const panel = page.getByRole("region", { name: "Plan my day" });
   await panel.getByLabel("Visit date (Shanghai)").fill("2026-11-12");
   await expect(

@@ -1,4 +1,8 @@
-import type { CatalogueBatch } from "../shared/contracts";
+import {
+  eligibleBranchPhoto,
+  reviewedBranchPhotos,
+} from "../shared/branch-photo";
+import type { BranchPhoto, CatalogueBatch } from "../shared/contracts";
 
 function invalid(): never {
   throw new Error("Invalid catalogue publication.");
@@ -91,6 +95,42 @@ function coordinates(value: unknown, allowConversion = true) {
     coordinates(conversion.original, false);
   }
 }
+function branchPhoto(value: unknown, placeId: string, kind: unknown) {
+  if (value === null) return null;
+  const photo = record(value, [
+    "assetId",
+    "title",
+    "alt",
+    "sourceUrl",
+    "originalUrl",
+    "author",
+    "authorUrl",
+    "license",
+    "licenseUrl",
+    "photographedAt",
+    "publishedAt",
+    "checkedAt",
+    "relevance",
+    "changes",
+    "width",
+    "height",
+    "sha256",
+    "rightsStatus",
+    "rightsExpiresAt",
+  ]);
+  text(photo.assetId);
+  const reviewed = Object.hasOwn(reviewedBranchPhotos, photo.assetId)
+    ? reviewedBranchPhotos[photo.assetId]
+    : null;
+  if (kind !== "real" || !reviewed || reviewed.placeId !== placeId) invalid();
+  for (const [key, expected] of Object.entries(reviewed.photo)) {
+    if (key === "rightsStatus" || key === "rightsExpiresAt") continue;
+    if (photo[key] !== expected) invalid();
+  }
+  choice(photo.rightsStatus, ["qualified", "unsupported", "expired"]);
+  if (photo.rightsExpiresAt !== null) date(photo.rightsExpiresAt);
+  return eligibleBranchPhoto(photo as BranchPhoto, placeId);
+}
 /** Closed publication shape prevents private or unvalidated fields leaking through JSON. */
 export function validateCatalogueBatch(value: unknown): CatalogueBatch {
   const batch = record(value, [
@@ -120,7 +160,11 @@ export function validateCatalogueBatch(value: unknown): CatalogueBatch {
   const evidenceIds = new Set<string>();
   const neighbourhoods = new Set<string>();
   const categories = new Set<string>();
+  const normalizedPlaces = [];
   for (const raw of places) {
+    const hasPhoto = raw !== null && typeof raw === "object" && "photo" in raw;
+    const hasChecks =
+      raw !== null && typeof raw === "object" && "visitFactChecks" in raw;
     const place = record(raw, [
       "id",
       "city",
@@ -138,6 +182,8 @@ export function validateCatalogueBatch(value: unknown): CatalogueBatch {
       "classifications",
       "evidence",
       "providerReferences",
+      ...(hasPhoto ? ["photo"] : []),
+      ...(hasChecks ? ["visitFactChecks"] : []),
     ]);
     text(place.id);
     text(place.displayName);
@@ -157,7 +203,7 @@ export function validateCatalogueBatch(value: unknown): CatalogueBatch {
     identities.add(identity);
     coordinates(place.coordinates);
     choice(place.operationStatus, ["current", "closed", "unknown"]);
-    if (place.operationStatus === "closed") invalid();
+    if (place.operationStatus === "closed" && !hasChecks) invalid();
     const evidence = list(place.evidence).map((rawEvidence) => {
       const item = record(rawEvidence, [
         "id",
@@ -211,6 +257,65 @@ export function validateCatalogueBatch(value: unknown): CatalogueBatch {
     for (const fact of ["identity", "category", "neighbourhood"])
       if (!hasFact(fact)) invalid();
     if (place.operationStatus === "current" && !hasFact("operation")) invalid();
+    if (hasChecks) {
+      const checks = record(place.visitFactChecks, [
+        "address",
+        "hours",
+        "operation",
+      ]);
+      for (const field of ["address", "hours", "operation"]) {
+        const check = record(checks[field], [
+          "outcome",
+          "checkedAt",
+          "evidenceIds",
+          "explanation",
+        ]);
+        choice(check.outcome, ["checked", "unknown", "failed", "conflict"]);
+        text(check.explanation);
+        if (check.checkedAt !== null) {
+          date(check.checkedAt);
+          if (Date.parse(check.checkedAt as string) > Date.now()) invalid();
+        }
+        const ids = list(check.evidenceIds);
+        if (new Set(ids).size !== ids.length) invalid();
+        for (const id of ids) {
+          text(id);
+          if (!evidence.some((item) => item.id === id)) invalid();
+        }
+        if (check.outcome === "checked") {
+          const fact = field === "address" ? "identity" : field;
+          if (
+            check.checkedAt === null ||
+            !ids.length ||
+            !ids.every((id) =>
+              evidence.some(
+                (item) =>
+                  item.id === id &&
+                  item.status === "current" &&
+                  (item.establishedFacts as string[]).includes(fact),
+              ),
+            )
+          )
+            invalid();
+          if (
+            field === "hours" &&
+            (place.hours === null ||
+              !ids.includes(
+                (place.hours as Record<string, unknown>).sourceEvidenceId,
+              ))
+          )
+            invalid();
+          if (field === "operation" && place.operationStatus === "unknown")
+            invalid();
+        }
+        if (
+          field === "operation" &&
+          place.operationStatus === "closed" &&
+          check.outcome !== "checked"
+        )
+          invalid();
+      }
+    }
     const requireEvidence = (id: unknown, fact: string) => {
       text(id);
       if (
@@ -327,11 +432,19 @@ export function validateCatalogueBatch(value: unknown): CatalogueBatch {
         qualifiedHandoff = true;
     }
     if (!qualifiedHandoff) invalid();
+    normalizedPlaces.push(
+      hasPhoto
+        ? {
+            ...place,
+            photo: branchPhoto(place.photo, place.id as string, batch.kind),
+          }
+        : place,
+    );
   }
   if (
     batch.kind === "real" &&
     (places.length < 6 || categories.size < 2 || neighbourhoods.size < 2)
   )
     invalid();
-  return value as CatalogueBatch;
+  return { ...batch, places: normalizedPlaces } as CatalogueBatch;
 }

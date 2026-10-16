@@ -1,6 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { Collaboration, Place } from "@/shared/contracts";
+import { textPolicies } from "@/shared/text-policy";
+import { TextField } from "./text-field";
+import type { WorkspaceActivity } from "./trip-workspace";
+
+class ObsoleteResponse extends Error {}
 
 class CollaborationFailure extends Error {
   constructor(
@@ -14,18 +19,29 @@ export function CollaborationPanel({
   tripId,
   dataKind,
   places,
+  selectedPlaceIds = [],
   owner = false,
   onTripChanged,
   onDenied,
+  onActivity,
+  onPendingSuggestions,
 }: {
   tripId: string;
   dataKind: "real" | "fixture";
   places: Place[];
+  selectedPlaceIds?: string[];
   owner?: boolean;
   onTripChanged?: () => Promise<void>;
   onDenied?: () => void;
+  onActivity?: (activity: WorkspaceActivity) => void;
+  onPendingSuggestions?: (count: number) => void;
 }) {
   const [state, setState] = useState<Collaboration | null>(null);
+  const currentState = useRef<Collaboration | null>(null);
+  const generation = useRef(0);
+  const running = useRef(false);
+  const [refreshedAt, setRefreshedAt] = useState<string>("");
+  const [changed, setChanged] = useState(false);
   const [candidates, setCandidates] = useState<Place[]>([]);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -37,9 +53,54 @@ export function CollaborationPanel({
     {},
   );
   const [amendments, setAmendments] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const commentDirty =
+      !!state &&
+      Object.entries(comments).some(
+        ([placeId, text]) =>
+          text !==
+          (state.comments.find(
+            (comment) =>
+              comment.actorId === state.actorId && comment.placeId === placeId,
+          )?.text ?? ""),
+      );
+    const suggestionDirty =
+      !!state &&
+      state.suggestions.some(
+        (suggestion) =>
+          (amendments[suggestion.id] !== undefined &&
+            amendments[suggestion.id] !== suggestion.name) ||
+          (!suggestion.place && !!confirmations[suggestion.id]),
+      );
+    onActivity?.({
+      busy: busy || (!state && !error),
+      error,
+      dirty: commentDirty || suggestionDirty || !!branch || !!name,
+      interrupted: retryMutation.current && (busy || !!retry.current),
+      label: "Group",
+    });
+  }, [
+    busy,
+    error,
+    state,
+    comments,
+    amendments,
+    confirmations,
+    branch,
+    name,
+    onActivity,
+  ]);
+  useEffect(() => {
+    onPendingSuggestions?.(
+      state?.suggestions.filter((suggestion) => suggestion.state === "pending")
+        .length ?? 0,
+    );
+  }, [state, onPendingSuggestions]);
   const retry = useRef<(() => Promise<void>) | null>(null);
+  const retryMutation = useRef(false);
   const endpoint = `/api/${owner ? "trips" : "guest-trips"}/${tripId}/collaboration`;
   async function json(path: string, input?: unknown) {
+    const scope = generation.current;
     const response = await fetch(path, {
       cache: "no-store",
       ...(input
@@ -51,6 +112,7 @@ export function CollaborationPanel({
         : {}),
     });
     const value = await response.json();
+    if (scope !== generation.current) throw new ObsoleteResponse();
     if (!response.ok)
       throw new CollaborationFailure(
         value.error?.message ?? "Collaboration request failed.",
@@ -58,16 +120,26 @@ export function CollaborationPanel({
       );
     return value;
   }
-  async function run(operation: () => Promise<void>) {
-    if (busy) return;
+  async function run(operation: () => Promise<void>, mutation = false) {
+    if (running.current) return;
+    running.current = true;
+    const scope = generation.current;
     setBusy(true);
-    setError("");
+    // Reading current state must not replace an interrupted write's retry.
+    const interrupted = !mutation && retryMutation.current && !!retry.current;
+    if (!interrupted) {
+      setError("");
+      retry.current = operation;
+      retryMutation.current = mutation;
+    }
     setNotice("");
-    retry.current = operation;
     try {
       await operation();
-      retry.current = null;
+      if (scope !== generation.current) return;
+      if (!interrupted) retry.current = null;
     } catch (failure) {
+      if (failure instanceof ObsoleteResponse || scope !== generation.current)
+        return;
       if (
         failure instanceof CollaborationFailure &&
         [401, 404].includes(failure.status)
@@ -79,25 +151,38 @@ export function CollaborationPanel({
         `${failure instanceof Error ? failure.message : "Collaboration failed."} No new change is confirmed. Retry explicitly.`,
       );
     } finally {
-      setBusy(false);
+      if (scope === generation.current) {
+        running.current = false;
+        setBusy(false);
+      }
     }
   }
   async function load() {
     const value = await json(endpoint);
-    setState(value.collaboration);
-    setComments(
-      Object.fromEntries(
-        value.collaboration.comments
-          .filter(
-            (comment: Collaboration["comments"][number]) =>
-              comment.actorId === value.collaboration.actorId,
-          )
-          .map((comment: Collaboration["comments"][number]) => [
-            comment.placeId,
-            comment.text,
-          ]),
-      ),
-    );
+    const previous = currentState.current;
+    const next: Collaboration = value.collaboration;
+    setChanged(!!previous && JSON.stringify(previous) !== JSON.stringify(next));
+    setComments((current) => {
+      const merged = { ...current };
+      for (const place of places) {
+        const saved = (snapshot: Collaboration | null) =>
+          snapshot?.comments.find(
+            (comment) =>
+              comment.actorId === snapshot.actorId &&
+              comment.placeId === place.id,
+          )?.text ?? "";
+        if (
+          current[place.id] === undefined ||
+          current[place.id] === saved(previous)
+        )
+          merged[place.id] = saved(next);
+      }
+      return merged;
+    });
+    currentState.current = next;
+    setState(next);
+    setRefreshedAt(new Date().toLocaleTimeString());
+    setNotice(previous ? "Group refreshed. Unsaved drafts are kept." : "");
     const catalogue = await json("/api/catalogue?city=Shanghai");
     setCandidates(
       catalogue.status === "available" && catalogue.data.dataKind === dataKind
@@ -108,16 +193,56 @@ export function CollaborationPanel({
   // biome-ignore lint/correctness/useExhaustiveDependencies: parent keys this component by authoritative Trip and data kind.
   useEffect(() => {
     void run(load);
+    return () => {
+      generation.current += 1;
+      running.current = false;
+    };
   }, [tripId, dataKind]);
   function change(data: Record<string, unknown>) {
     const input = { operationId: crypto.randomUUID(), ...data };
     void run(async () => {
       const value = await json(endpoint, input);
+      currentState.current = value.collaboration;
       setState(value.collaboration);
+      setRefreshedAt(new Date().toLocaleTimeString());
+      setChanged(false);
+      if (data.action === "comment")
+        setComments((current) =>
+          current[String(data.placeId)] === data.text
+            ? {
+                ...current,
+                [String(data.placeId)]:
+                  value.collaboration.comments.find(
+                    (comment: Collaboration["comments"][number]) =>
+                      comment.actorId === value.collaboration.actorId &&
+                      comment.placeId === data.placeId,
+                  )?.text ?? "",
+              }
+            : current,
+        );
+      if (data.action === "suggest") {
+        if (data.placeId)
+          setBranch((current) => (current === data.placeId ? "" : current));
+        if (data.name)
+          setName((current) => (current === data.name ? "" : current));
+      }
+      if (data.action === "amend")
+        setAmendments((current) =>
+          current[String(data.suggestionId)] === data.name
+            ? {
+                ...current,
+                [String(data.suggestionId)]:
+                  value.collaboration.suggestions.find(
+                    (suggestion: Collaboration["suggestions"][number]) =>
+                      suggestion.id === data.suggestionId,
+                  )?.name ?? String(data.name),
+              }
+            : current,
+        );
       if (["accept", "confirm"].includes(String(data.action)))
         await onTripChanged?.();
       setNotice("Collaboration change saved.");
-    });
+    }, true);
   }
   const label = (actorId: string) =>
     actorId === "organiser"
@@ -146,6 +271,23 @@ export function CollaborationPanel({
         preference, not a guarantee. The organiser generates the day plan from
         chosen Places; real timing and feasibility remain unresolved.
       </p>
+      <p>
+        You can edit only your own comments and pending suggestions. Display
+        names are unverified; guest numbers identify each participant. Past
+        contributions remain after access ends.
+      </p>
+      {refreshedAt && (
+        <p>
+          Last confirmed update: {refreshedAt}. Refresh to see new
+          contributions.
+        </p>
+      )}
+      {changed && (
+        <p role="status">
+          Group changed since your previous review. Review the preferences,
+          comments and suggestions below.
+        </p>
+      )}
       {busy && <p role="status">Waiting for collaboration confirmation…</p>}
       {notice && <p role="status">{notice}</p>}
       {error && (
@@ -155,12 +297,18 @@ export function CollaborationPanel({
             type="button"
             disabled={busy}
             onClick={() => {
-              if (retry.current) void run(retry.current);
+              if (retry.current) void run(retry.current, retryMutation.current);
             }}
           >
             Retry collaboration
           </button>
         </div>
+      )}
+      {retryMutation.current && retry.current && error && (
+        <p>
+          The unconfirmed change keeps its original retry. Refresh can show
+          current group decisions while keeping your drafts and retry.
+        </p>
       )}
       <button type="button" disabled={busy} onClick={() => void run(load)}>
         Refresh collaboration
@@ -188,6 +336,27 @@ export function CollaborationPanel({
                   {place.displayName} · {branchLabel}
                 </h4>
                 <p>{place.address}</p>
+                <p>
+                  {selectedPlaceIds.includes(place.id)
+                    ? "Chosen by organiser for day"
+                    : "Outstanding decision: organiser has not chosen this Place for the day."}
+                </p>
+                <p>
+                  {
+                    state.comments.filter(
+                      (comment) => comment.placeId === place.id,
+                    ).length
+                  }{" "}
+                  comments to review ·{" "}
+                  {
+                    state.suggestions.filter(
+                      (suggestion) =>
+                        suggestion.place?.id === place.id &&
+                        suggestion.state === "pending",
+                    ).length
+                  }{" "}
+                  pending suggestions for this Place.
+                </p>
                 <p>
                   Must go{" "}
                   {votes.filter((vote) => vote.choice === "must-go").length} ·
@@ -232,7 +401,10 @@ export function CollaborationPanel({
                     .filter((comment) => comment.placeId === place.id)
                     .map((comment) => (
                       <li key={comment.id}>
-                        {label(comment.actorId)}: {comment.text}
+                        {label(comment.actorId)}:{" "}
+                        <span style={{ whiteSpace: "pre-wrap" }}>
+                          {comment.text}
+                        </span>
                       </li>
                     ))}
                 </ul>
@@ -247,20 +419,20 @@ export function CollaborationPanel({
                     });
                   }}
                 >
-                  <label>
+                  <label htmlFor={`${tripId}-comment-${place.id}`}>
                     Your comment for {branchLabel}
-                    <textarea
-                      required
-                      maxLength={2000}
-                      value={comments[place.id] ?? ""}
-                      onChange={(event) =>
-                        setComments((current) => ({
-                          ...current,
-                          [place.id]: event.target.value,
-                        }))
-                      }
-                    />
                   </label>
+                  <TextField
+                    id={`${tripId}-comment-${place.id}`}
+                    policy={textPolicies.comment}
+                    value={comments[place.id] ?? ""}
+                    onChange={(value) =>
+                      setComments((current) => ({
+                        ...current,
+                        [place.id]: value,
+                      }))
+                    }
+                  />
                   <button type="submit" disabled={busy}>
                     Save comment for {branchLabel}
                   </button>
@@ -271,9 +443,25 @@ export function CollaborationPanel({
           <section aria-label="Place suggestions">
             <h4>Place suggestions</h4>
             <p>
+              {
+                state.suggestions.filter(
+                  (suggestion) => suggestion.state === "pending",
+                ).length
+              }{" "}
+              awaiting organiser review ·{" "}
+              {
+                state.suggestions.filter(
+                  (suggestion) =>
+                    suggestion.state === "accepted" && !suggestion.place,
+                ).length
+              }{" "}
+              awaiting branch confirmation.
+            </p>
+            <p>
               Suggestions wait for organiser review. An unresolved name is a
               request, not a confirmed destination; acceptance alone cannot make
-              it schedulable.
+              it schedulable. Accepting a branch adds it to the shortlist; the
+              organiser still chooses whether to include it in the day.
             </p>
             <form
               onSubmit={(event) => {
@@ -307,15 +495,15 @@ export function CollaborationPanel({
                 change({ action: "suggest", name });
               }}
             >
-              <label>
+              <label htmlFor={`${tripId}-suggestion`}>
                 Unresolved Place name
-                <input
-                  required
-                  maxLength={240}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
               </label>
+              <TextField
+                id={`${tripId}-suggestion`}
+                policy={textPolicies.suggestion}
+                value={name}
+                onChange={setName}
+              />
               <button type="submit" disabled={busy}>
                 Suggest unresolved Place
               </button>
@@ -376,20 +564,20 @@ export function CollaborationPanel({
                         });
                       }}
                     >
-                      <label>
+                      <label htmlFor={`${tripId}-amend-${suggestion.id}`}>
                         Amend your suggestion
-                        <input
-                          required
-                          maxLength={240}
-                          value={amendments[suggestion.id] ?? suggestion.name}
-                          onChange={(event) =>
-                            setAmendments((current) => ({
-                              ...current,
-                              [suggestion.id]: event.target.value,
-                            }))
-                          }
-                        />
                       </label>
+                      <TextField
+                        id={`${tripId}-amend-${suggestion.id}`}
+                        policy={textPolicies.suggestion}
+                        value={amendments[suggestion.id] ?? suggestion.name}
+                        onChange={(value) =>
+                          setAmendments((current) => ({
+                            ...current,
+                            [suggestion.id]: value,
+                          }))
+                        }
+                      />
                       <p>
                         Amending the name makes this an unresolved request for
                         organiser review.

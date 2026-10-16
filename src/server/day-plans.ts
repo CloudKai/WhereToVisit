@@ -1,6 +1,12 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { DayPlanRequest } from "@/shared/contracts";
+import {
+  normalizedText,
+  type TextPolicy,
+  textError,
+  textPolicies,
+} from "@/shared/text-policy";
 import { dayPlanState, storedDayPlan } from "./day-plan-state";
 import { openDatabase } from "./db/connection";
 import { collaborationAuthority } from "./invitations";
@@ -9,17 +15,12 @@ import { TripFailure } from "./trips";
 function invalid(message: string): never {
   throw new TripFailure("invalid-day-plan", message);
 }
-function optionalText(value: unknown, limit: number) {
-  if (value === undefined || value === null || value === "") return null;
-  if (
-    typeof value !== "string" ||
-    Array.from(value.trim()).length > limit ||
-    /[\p{Cc}\p{Cf}]/u.test(value)
-  )
-    invalid(
-      `Use at most ${limit} characters without control characters, or leave this preference unset.`,
-    );
-  return value.trim() || null;
+function optionalText(value: unknown, policy: TextPolicy) {
+  const error = textError(value, policy);
+  if (error) invalid(error);
+  return typeof value === "string"
+    ? normalizedText(value, policy) || null
+    : null;
 }
 function visitDate(value: unknown) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
@@ -132,9 +133,12 @@ export function dayPlanOperation(
         visitDate: visitDate(input.visitDate),
         selectedPlaceIds: [...trip.selectedPlaceIds],
         mode: mode as DayPlanRequest["mode"],
-        startArea: optionalText(input.startArea, 200),
-        budget: optionalText(input.budget, 120),
-        dietaryNeeds: optionalText(input.dietaryNeeds, 500),
+        startArea: optionalText(input.startArea, textPolicies.startArea),
+        budget: optionalText(input.budget, textPolicies.budget),
+        dietaryNeeds: optionalText(
+          input.dietaryNeeds,
+          textPolicies.dietaryNeeds,
+        ),
         pace: pace as DayPlanRequest["pace"],
       };
       if ((stored?.receipts.length ?? 0) >= 10000)

@@ -1,6 +1,12 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { Collaboration, Place } from "@/shared/contracts";
+import {
+  normalizedText,
+  type TextPolicy,
+  textError,
+  textPolicies,
+} from "@/shared/text-policy";
 import { queryCatalogue } from "./catalogue";
 import { openDatabase } from "./db/connection";
 import { collaborationAuthority } from "./invitations";
@@ -13,15 +19,10 @@ type Stored = Pick<Collaboration, "votes" | "comments" | "suggestions"> & {
 function invalid(message = "Supply a valid collaboration operation."): never {
   throw new TripFailure("invalid-request", message);
 }
-function boundedText(value: unknown, limit: number) {
-  if (
-    typeof value !== "string" ||
-    !value.trim() ||
-    Array.from(value.trim()).length > limit ||
-    /[\p{Cc}\p{Cf}]/u.test(value)
-  )
-    invalid(`Use 1–${limit} characters without control characters.`);
-  return value.trim();
+function boundedText(value: unknown, policy: TextPolicy) {
+  const error = textError(value, policy);
+  if (error) invalid(error);
+  return normalizedText(value as string, policy);
 }
 type Candidate = { place: Place; kind: "real" | "fixture" };
 function operation(
@@ -153,7 +154,7 @@ function operation(
                   "You may amend only your own Place comment.",
                   403,
                 );
-              const text = boundedText(input.text, 1000);
+              const text = boundedText(input.text, textPolicies.comment);
               if (own) own.text = text;
               else {
                 if (state.comments.length >= 2000)
@@ -183,7 +184,7 @@ function operation(
               );
             const name = candidate
               ? candidate.place.displayName
-              : boundedText(input.name, 120);
+              : boundedText(input.name, textPolicies.suggestion);
             const values = { name, place: candidate?.place ?? null };
             if (input.action === "amend") {
               const suggestion = state.suggestions.find(

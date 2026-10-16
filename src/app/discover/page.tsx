@@ -9,11 +9,11 @@ export default async function Discover({
   const { placeId } = await searchParams;
   const result = await queryCatalogue({ city: "Shanghai" });
   return (
-    <section className="page-section">
-      <p className="eyebrow">DISCOVER / SHANGHAI</p>
+    <section className="page-section discovery-page">
+      <p className="eyebrow">THE SHANGHAI GUIDE</p>
       <h1>Discover Shanghai</h1>
       <p className="lead">
-        Food and cafés, with the story behind each recommendation.
+        A small sourced shortlist. Find a reason to go, then check the branch.
       </p>
       <Discovery
         initialResult={result}

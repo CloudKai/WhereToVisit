@@ -85,7 +85,7 @@ test("organiser edits a real day, reloads and reviews the retained canonical bra
   browser,
 }, testInfo) => {
   const trip = await prepare(page.request);
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   const result = page.getByRole("region", {
     name: "Generated day plan",
     exact: true,
@@ -93,6 +93,7 @@ test("organiser edits a real day, reloads and reviews the retained canonical bra
   const stops = result
     .getByRole("list", { name: "Day stops" })
     .getByRole("listitem");
+  await expect(result).toContainText("Revision 1");
   await stops.nth(1).getByRole("button", { name: "Move earlier" }).click();
   await expect(result).toContainText("Revision 2");
   await stops.nth(0).getByLabel("Desired arrival (Shanghai)").fill("08:30");
@@ -124,6 +125,9 @@ test("organiser edits a real day, reloads and reviews the retained canonical bra
     name: "Day stop branch details",
   });
   await expect(details).toContainText("Shanghai Roastery");
+  await details
+    .getByText("Branch identity and source evidence", { exact: true })
+    .click();
   const addressLink = await details
     .getByRole("link", { name: "Search address on Apple Maps" })
     .getAttribute("href");
@@ -176,7 +180,9 @@ test("organiser edits a real day, reloads and reviews the retained canonical bra
       ).status(),
     ).toBe(201);
     const guestPage = await guest.newPage();
-    await guestPage.goto(`http://127.0.0.1:8180/shared-trips/${trip.id}`);
+    await guestPage.goto(
+      `http://127.0.0.1:8180/shared-trips/${trip.id}?view=day`,
+    );
     await expect(
       guestPage.getByRole("region", {
         name: "Generated day plan",
@@ -226,7 +232,7 @@ test("stale owner editing reloads the current day and regeneration requires repl
   });
   try {
     const stale = await owner.newPage();
-    await stale.goto("http://127.0.0.1:8180/trips");
+    await stale.goto("http://127.0.0.1:8180/trips?view=day");
     const result = stale.getByRole("region", {
       name: "Generated day plan",
       exact: true,

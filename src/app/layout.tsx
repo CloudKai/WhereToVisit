@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PrimaryNavigation } from "@/components/primary-navigation";
 import "./globals.css";
 export const metadata: Metadata = {
   title: "WhereToVisit — Inspiration to a day out",
@@ -21,11 +22,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </span>
               WhereToVisit
             </Link>
-            <nav aria-label="Primary">
-              <Link href="/discover">Discover</Link>
-              <Link href="/import">Import</Link>
-              <Link href="/trips">Trips</Link>
-            </nav>
+            <PrimaryNavigation />
           </div>
         </header>
         <main id="main" tabIndex={-1}>

@@ -10,6 +10,7 @@ import {
 import { collaborationAuthority } from "./invitations";
 import { applyPlanningEvidence, planningEvidence } from "./planning-evidence";
 import { TripFailure } from "./trips";
+import { savedVisitFacts, visitFactVersions } from "./visit-facts";
 
 function propose(
   trip: Trip,
@@ -18,6 +19,18 @@ function propose(
 ): DayPlan {
   const now = new Date().toISOString();
   const request = draft.request;
+  if (
+    trip.savedPlaces.some(
+      (member) =>
+        request.selectedPlaceIds.includes(member.placeId) &&
+        savedVisitFacts(member).identityReviewRequired,
+    )
+  )
+    throw new TripFailure(
+      "branch-identity-review",
+      "A changed address needs same-branch identity review before generating a current day. Original saved choices and directions are historical.",
+      409,
+    );
   // No qualified live routes/coordinates/hours exist. Canonical saved order is an explicit ordering assumption.
   const ids = trip.savedPlaces
     .filter((member) => request.selectedPlaceIds.includes(member.placeId))
@@ -28,6 +41,7 @@ function propose(
     request,
     requestRevision: draft.revision,
     selectionRevision: draft.selectionRevision,
+    visitFactVersions: visitFactVersions(trip, request.selectedPlaceIds),
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,
     dataKind: trip.dataKind,
@@ -86,8 +100,54 @@ function propose(
     ],
     unscheduledPlaces: [],
   };
+  const closed = trip.savedPlaces.filter(
+    (member) =>
+      request.selectedPlaceIds.includes(member.placeId) &&
+      savedVisitFacts(member).fields.operation.value === "closed",
+  );
+  if (closed.length) {
+    const closedIds = closed.map((member) => member.placeId);
+    plan.stops = plan.stops.filter((stop) => !closedIds.includes(stop.placeId));
+    plan.travelLegs = plan.stops.slice(1).map((stop, index) => ({
+      fromPlaceId: plan.stops[index].placeId,
+      toPlaceId: stop.placeId,
+      requestedMode: request.mode,
+      actualSubmode: null,
+      provider: null,
+      retrievedAt: null,
+      resultKind: null,
+      durationSeconds: null,
+      distanceMetres: null,
+      outcome: "permission-unqualified",
+      apiVersion: null,
+      coordinateProvenance: null,
+      visitTimeContext: `${request.visitDate} Asia/Shanghai; surviving adjacency needs reassessment`,
+    }));
+  }
   const evidence = planningEvidence(trip, request);
   if (evidence) applyPlanningEvidence(plan, evidence);
+  if (closed.length) {
+    const closedIds = closed.map((member) => member.placeId);
+    plan.operatingHours = plan.operatingHours.filter(
+      (item) => !closedIds.includes(item.placeId),
+    );
+    for (const member of closed)
+      if (
+        !plan.unscheduledPlaces.some((item) => item.placeId === member.placeId)
+      )
+        plan.unscheduledPlaces.push({
+          placeId: member.placeId,
+          reason:
+            "The latest reviewed catalogue operating-status fact records closure; reassessment is required before Restore.",
+          cause: "closure",
+          restoreEligibility: "fresh-evidence-required",
+          evidenceRetrievedAt:
+            savedVisitFacts(member).fields.operation.checkedAt,
+        });
+    plan.warnings.push(
+      "A reviewed closure excludes the affected Place; original sources, votes and arrangements remain retained.",
+    );
+  }
   return plan;
 }
 export function dayGenerationOperation(

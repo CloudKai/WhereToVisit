@@ -115,7 +115,7 @@ test("browser guests have distinct duplicate names, return once, and lose genera
   browser,
 }, testInfo) => {
   const trip = await owner(page.request);
-  await page.goto("/trips", { waitUntil: "domcontentloaded" });
+  await page.goto("/trips?view=manage", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Create invitation" }).click();
   const link = await page
     .getByLabel("Invitation link", { exact: true })
@@ -135,20 +135,20 @@ test("browser guests have distinct duplicate names, return once, and lose genera
     await expect(
       guest.getByRole("heading", { name: trip.title }),
     ).toBeVisible();
-    await expect(
-      guest.getByText("You are Alex · Guest 1", { exact: true }),
-    ).toBeVisible();
+    await expect(guest.locator(".trip-workspace-header")).toContainText(
+      "Alex · Guest 1",
+    );
     const secondPage = await second.newPage();
     await secondPage.goto(link);
     await secondPage.getByLabel("Display name").fill("Alex");
     await secondPage.getByRole("button", { name: "Join as guest" }).click();
-    await expect(
-      secondPage.getByText("You are Alex · Guest 2", { exact: true }),
-    ).toBeVisible();
+    await expect(secondPage.locator(".trip-workspace-header")).toContainText(
+      "Alex · Guest 2",
+    );
     await guest.reload();
-    await expect(
-      guest.getByText("You are Alex · Guest 1", { exact: true }),
-    ).toBeVisible();
+    await expect(guest.locator(".trip-workspace-header")).toContainText(
+      "Alex · Guest 1",
+    );
     await expect(
       guest.getByRole("region", { name: "Trip participants" }),
     ).toContainText("Alex · Guest 2");
@@ -217,9 +217,9 @@ test("browser guests have distinct duplicate names, return once, and lose genera
     await guest.goto(replacement);
     await guest.getByLabel("Display name").fill("Alex");
     await guest.getByRole("button", { name: "Join as guest" }).click();
-    await expect(
-      guest.getByText("You are Alex · Guest 3", { exact: true }),
-    ).toBeVisible();
+    await expect(guest.locator(".trip-workspace-header")).toContainText(
+      "Alex · Guest 3",
+    );
     await page.reload();
     await expect(
       page.getByRole("region", { name: "Invitation and participants" }),
@@ -227,6 +227,7 @@ test("browser guests have distinct duplicate names, return once, and lose genera
     await page.setViewportSize({ width: 375, height: 900 });
     await page.screenshot({
       path: testInfo.outputPath("owner-invitation-375.png"),
+      mask: [page.getByLabel("Invitation link", { exact: true })],
       fullPage: true,
     });
   } finally {
@@ -245,7 +246,7 @@ test("invitation and join storage failures preserve authority and honest retries
       value: { writeText: () => Promise.reject(new Error("Clipboard denied")) },
     }),
   );
-  await page.goto("/trips");
+  await page.goto("/trips?view=manage");
   await page.getByRole("button", { name: "Create invitation" }).click();
   const link = await page
     .getByLabel("Invitation link", { exact: true })
@@ -458,7 +459,7 @@ test("invalid guest name remains correctable and an unsupported clipboard offers
   await page.addInitScript(() =>
     Object.defineProperty(navigator, "clipboard", { value: undefined }),
   );
-  await page.goto("/trips");
+  await page.goto("/trips?view=manage");
   await page.getByRole("button", { name: "Create invitation" }).click();
   const link = await page
     .getByLabel("Invitation link", { exact: true })

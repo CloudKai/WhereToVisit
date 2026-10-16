@@ -15,17 +15,36 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [visible, setVisible] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const retainedJobs = useRef<Import[]>([]);
+  const refreshingGeneration = useRef<number | null>(null);
   const mutating = useRef(false);
   const generation = useRef(0);
   const refresh = useCallback(async (force = false) => {
-    if (mutating.current && !force) return;
+    if ((mutating.current || refreshingGeneration.current !== null) && !force)
+      return;
     const current = ++generation.current;
+    refreshingGeneration.current = current;
+    setRefreshing(true);
     try {
       const response = await fetch("/api/imports", { cache: "no-store" });
       const value = await response.json();
       if (!response.ok)
         throw new Error(value.error?.message ?? "Drafts could not be loaded.");
       if (current === generation.current) {
+        if (
+          retainedJobs.current.some(
+            (job) =>
+              new Date(job.expiresAt).getTime() <= Date.now() &&
+              !value.jobs.some((retained: Import) => retained.id === job.id),
+          )
+        )
+          setNotice(
+            "An expired temporary import was removed. Import the article again to start a new draft. Places already saved to a Trip keep their source attribution.",
+          );
+        retainedJobs.current = value.jobs;
         setJobs(value.jobs);
         setResolvedPlaces(value.resolvedPlaces ?? []);
         setFetchError(null);
@@ -38,17 +57,47 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
             ? failure.message
             : "Drafts unavailable. Reload to retry.",
         );
+    } finally {
+      if (refreshingGeneration.current === current) {
+        refreshingGeneration.current = null;
+        setRefreshing(false);
+      }
     }
   }, []);
   useEffect(() => {
-    void refresh();
-    const interval = setInterval(() => void refresh(), 1500);
+    const visibilityChanged = () => {
+      const nowVisible = document.visibilityState === "visible";
+      setVisible(nowVisible);
+      if (nowVisible) void refresh();
+    };
+    setVisible(document.visibilityState === "visible");
+    void refresh(true);
+    document.addEventListener("visibilitychange", visibilityChanged);
     return () => {
-      clearInterval(interval);
+      document.removeEventListener("visibilitychange", visibilityChanged);
       generation.current++;
     };
   }, [refresh]);
+  const workPending = jobs.some(active);
+  useEffect(() => {
+    if (!visible || !ready || busy || fetchError || !workPending) return;
+    const interval = setInterval(() => void refresh(), 1500);
+    return () => clearInterval(interval);
+  }, [visible, ready, busy, fetchError, workPending, refresh]);
+  useEffect(() => {
+    if (!visible || busy || fetchError || !jobs.length) return;
+    const remaining = Math.min(
+      ...jobs.map((job) => new Date(job.expiresAt).getTime() - Date.now()),
+    );
+    // Browser timers cap at a signed 32-bit delay; do not poll distant expiry.
+    const timer = setTimeout(
+      () => void refresh(),
+      Math.min(Math.max(remaining, 100), 2_147_483_647),
+    );
+    return () => clearTimeout(timer);
+  }, [jobs, visible, busy, fetchError, refresh]);
   async function mutate(path: string, body: object) {
+    if (mutating.current) return;
     generation.current++;
     mutating.current = true;
     setBusy(true);
@@ -76,24 +125,9 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
   }
   return (
     <div className="import-workflow">
-      <p>
-        Supported: public English Wikivoyage articles with explicit Eat/Drink
-        listing names. Social links, videos, other blogs and general prose
-        analysis are unavailable.
+      <p className="import-support">
+        Import listing names from a public English Wikivoyage Eat/Drink article.
       </p>
-      <p>
-        Temporary drafts belong to this browser session and expire within 30
-        days. Source text is deleted immediately after extraction. These names
-        can be compared with the bounded sourced shortlist. Every branch choice
-        requires your confirmation. Sign in and review a confirmed Shanghai
-        branch to save it to a private Trip. Live provider lookup and exact map
-        pins remain unavailable.
-      </p>
-      {fixtureMode && (
-        <p className="map-fixture-label">
-          Fictional import responses — development behavior only
-        </p>
-      )}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -115,85 +149,96 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
           Import article
         </button>
       </form>
+      <p className="import-retention">
+        Temporary drafts stay in this browser for up to 30 days. Review each
+        branch before saving.
+      </p>
+      <details className="import-disclosure">
+        <summary>Supported sources, privacy and retention</summary>
+        <p>
+          Supported: public English Wikivoyage articles with explicit Eat/Drink
+          listing names. Social links, videos, other blogs and general prose
+          analysis are unavailable.
+        </p>
+        <p>
+          Temporary drafts belong to this browser session and expire within 30
+          days. Source text is deleted immediately after extraction. These names
+          can be compared with the bounded sourced shortlist. Every branch
+          choice requires your confirmation. Sign in and review a confirmed
+          Shanghai branch to save it to a private Trip. Live provider lookup and
+          exact map pins remain unavailable.
+        </p>
+      </details>
+      {fixtureMode && (
+        <p className="map-fixture-label">
+          Fictional import responses — development behavior only
+        </p>
+      )}
+      <ol className="import-steps" aria-label="Import steps">
+        <li>Import article</li>
+        <li>Review names</li>
+        <li>Confirm a branch</li>
+        <li>Review Trip and Save</li>
+      </ol>
+      <div className="import-refresh">
+        <button
+          type="button"
+          disabled={busy || refreshing}
+          onClick={() => void refresh()}
+        >
+          Refresh drafts
+        </button>
+        <p role="status">
+          {fetchError
+            ? "Progress paused. Refresh to try again."
+            : !ready
+              ? "Loading temporary drafts…"
+              : busy
+                ? "Updating your import…"
+                : workPending
+                  ? "Checking progress while this page is visible."
+                  : "Drafts are up to date. Refresh to check for changes."}
+        </p>
+      </div>
+      {notice && <p role="status">{notice}</p>}
       {(error || fetchError) && (
         <div role="alert">
           <p>{error ?? fetchError}</p>
-          <button type="button" onClick={() => void refresh()}>
+          <button
+            type="button"
+            disabled={busy || refreshing}
+            onClick={() => void refresh()}
+          >
             Reload drafts
           </button>
         </div>
       )}
-      {resolvedPlaces.length > 0 && (
-        <section
-          aria-label="Confirmed temporary branches"
-          className="import-attribution"
-        >
-          <h2>Confirmed temporary branches</h2>
+      <div>
+        {ready && !jobs.length && (
           <p>
-            Selections from your retained drafts, combined by branch identity.
-            These are your choices; exact map pins remain unavailable. Sign in
-            and review explicitly to save a Shanghai branch to a private Trip.
+            No temporary imports in this browser session. Paste a supported
+            article to start.
           </p>
-          {resolvedPlaces.map((resolved) => (
-            <div key={`${resolved.dataKind}:${resolved.place.id}`}>
-              <h3>
-                {resolved.place.displayName} · {resolved.place.branch}
-              </h3>
-              <p>
-                {resolved.place.address}. City: {resolved.place.city}
-                {resolved.place.city !== "Shanghai"
-                  ? " — outside Shanghai discovery"
-                  : ""}
-                .
-              </p>
-              <Link
-                className="text-link"
-                href={`/trips?placeId=${encodeURIComponent(resolved.place.id)}&importId=${encodeURIComponent(resolved.importedEvidence[0].importId)}`}
-              >
-                Save confirmed branch to a Trip
-              </Link>
-              <p>
-                {resolved.importedEvidence.length} source mentions ·{" "}
-                {resolved.dataKind === "fixture"
-                  ? "Fictional development draft"
-                  : "User-confirmed association"}
-                .
-              </p>
-              {resolved.importedEvidence.map((evidence) => (
-                <p key={`${evidence.importId}:${evidence.mentionId}`}>
-                  <a
-                    href={evidence.source.canonicalUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Original source
-                  </a>{" "}
-                  · {evidence.source.attribution}. Original wording: “
-                  {evidence.extraction.quote}”. Your selection on{" "}
-                  {evidence.confirmation.confirmedAt}; independent verification:
-                  no.
-                </p>
-              ))}
-            </div>
-          ))}
-        </section>
-      )}
-      <div aria-live="polite" aria-atomic="false">
-        {!jobs.length && <p>No temporary imports in this browser session.</p>}
+        )}
         {jobs.map((job) => (
           <article className="import-job" key={job.id}>
-            <h2>Article import</h2>
+            <h2>
+              Article import ·{" "}
+              {job.mentions.length
+                ? `${job.mentions.length} listing names`
+                : "source review"}
+            </h2>
             {job.dataKind === "fixture" && (
               <p>Fictional source result — development only</p>
             )}
             <p className="import-source">{job.sourceUrl}</p>
             <p role="status">
               {job.status === "queued"
-                ? "Queued — waiting for the bounded source worker"
+                ? "Queued — submitted, waiting to retrieve the article"
                 : job.status === "processing"
-                  ? "Processing — retrieving article and extracting listing names"
+                  ? "Processing — extracting, retrieving the article and reading listing names"
                   : job.status === "awaiting-confirmation"
-                    ? "Extracted names — review candidate branches"
+                    ? "Review names — find candidates, then confirm the exact branch"
                     : job.status === "unsupported"
                       ? "Unsupported import"
                       : job.status === "failed"
@@ -263,17 +308,20 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                     CC BY-SA 4.0
                   </a>
                 </p>
-                <p>
-                  {job.evidence.changes} {job.evidence.limits}
-                </p>
-                {!job.sourceReplayAvailable && (
+                <details>
+                  <summary>Source capture and extraction limits</summary>
                   <p>
-                    Whole-source replay is unavailable: source text is deleted
-                    after extraction. Exact bounded quotations and their
-                    original revision/hash remain; the hash cannot reconstruct
-                    the source.
+                    {job.evidence.changes} {job.evidence.limits}
                   </p>
-                )}
+                  {!job.sourceReplayAvailable && (
+                    <p>
+                      Whole-source replay is unavailable: source text is deleted
+                      after extraction. Exact bounded quotations and their
+                      original revision/hash remain; the hash cannot reconstruct
+                      the source.
+                    </p>
+                  )}
+                </details>
               </div>
             )}
             {job.mentions.map((mention) => (
@@ -285,6 +333,21 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                     : "Unresolved mention"}
                 </p>
                 {mention.resolution && <p>{mention.resolution.message}</p>}
+                {mention.resolution?.outcome === "no-match" && (
+                  <p>
+                    No-match covers only our six canonical catalogue branches.
+                    It does not mean this place is absent from Shanghai. Keep
+                    the source wording and try candidate lookup again, or browse
+                    the shortlist.
+                  </p>
+                )}
+                {mention.candidates.length > 0 && !mention.confirmation && (
+                  <p>
+                    Compare the name and address below. Your confirmation
+                    records your choice; it does not independently verify the
+                    source-to-branch match.
+                  </p>
+                )}
                 {mention.confirmation && (
                   <p>
                     Your selection is recorded separately from independent venue
@@ -309,35 +372,6 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                         ? "Outside Shanghai discovery."
                         : "Shanghai candidate."}
                     </p>
-                    {candidate.branchEvidence.map((evidence) => (
-                      <p key={evidence.id}>
-                        <a
-                          href={evidence.sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {evidence.attribution}
-                        </a>{" "}
-                        · Observed {evidence.capturedAt}. {evidence.limits}
-                      </p>
-                    ))}
-                    <p>
-                      {candidate.providerReference.provider}:{" "}
-                      {candidate.providerReference.qualificationNotes}
-                    </p>
-                    {candidate.providerReference.url && (
-                      <p>
-                        <a
-                          href={candidate.providerReference.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {candidate.providerReference.linkKind === "search"
-                            ? "Search this address in an external map"
-                            : "Inspect provider reference"}
-                        </a>
-                      </p>
-                    )}
                     {!mention.confirmation && (
                       <button
                         type="button"
@@ -365,6 +399,38 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                         unavailable; the link is an address search.
                       </p>
                     )}
+                    <details>
+                      <summary>Branch sources and address search</summary>
+                      {candidate.branchEvidence.map((evidence) => (
+                        <p key={evidence.id}>
+                          <a
+                            href={evidence.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {evidence.attribution}
+                          </a>{" "}
+                          · Observed {evidence.capturedAt}. {evidence.limits}
+                        </p>
+                      ))}
+                      <p>
+                        {candidate.providerReference.provider}:{" "}
+                        {candidate.providerReference.qualificationNotes}
+                      </p>
+                      {candidate.providerReference.url && (
+                        <p>
+                          <a
+                            href={candidate.providerReference.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {candidate.providerReference.linkKind === "search"
+                              ? "Search this address in an external map"
+                              : "Inspect provider reference"}
+                          </a>
+                        </p>
+                      )}
+                    </details>
                   </div>
                 ))}
                 <p>
@@ -402,7 +468,9 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
                       })
                     }
                   >
-                    Find candidate branches
+                    {job.mentions.some((mention) => mention.resolution)
+                      ? "Retry candidate lookup"
+                      : "Find candidate branches"}
                   </button>
                 )}
               {active(job) && (
@@ -440,6 +508,61 @@ export function ContentImport({ fixtureMode }: { fixtureMode: boolean }) {
           </article>
         ))}
       </div>
+      {resolvedPlaces.length > 0 && (
+        <section
+          aria-label="Confirmed temporary branches"
+          className="import-attribution"
+        >
+          <h2>Confirmed temporary branches</h2>
+          <p>
+            Selections from your retained drafts, combined by branch identity.
+            These are your choices; exact map pins remain unavailable. Sign in
+            and review explicitly to save a Shanghai branch to a private Trip.
+          </p>
+          {resolvedPlaces.map((resolved) => (
+            <div key={`${resolved.dataKind}:${resolved.place.id}`}>
+              <h3>
+                {resolved.place.displayName} · {resolved.place.branch}
+              </h3>
+              <p>
+                {resolved.place.address}. City: {resolved.place.city}
+                {resolved.place.city !== "Shanghai"
+                  ? " — outside Shanghai discovery"
+                  : ""}
+                .
+              </p>
+              <Link
+                className="text-link"
+                href={`/trips?placeId=${encodeURIComponent(resolved.place.id)}&importId=${encodeURIComponent(resolved.importedEvidence[0].importId)}`}
+              >
+                Save confirmed branch to a Trip
+              </Link>
+              <p>
+                {resolved.importedEvidence.length} source mentions ·{" "}
+                {resolved.dataKind === "fixture"
+                  ? "Fictional development draft"
+                  : "User-confirmed association"}
+                .
+              </p>
+              {resolved.importedEvidence.map((evidence) => (
+                <p key={`${evidence.importId}:${evidence.mentionId}`}>
+                  <a
+                    href={evidence.source.canonicalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Original source
+                  </a>{" "}
+                  · {evidence.source.attribution}. Original wording: “
+                  {evidence.extraction.quote}”. Your selection on{" "}
+                  {evidence.confirmation.confirmedAt}; independent verification:
+                  no.
+                </p>
+              ))}
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

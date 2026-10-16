@@ -145,6 +145,29 @@ export function dayEditingOperation(
             )
             .map((stop) => ({
               placeId: stop.placeId,
+              cause: "manual-removal" as const,
+              restoreEligibility:
+                state.plan?.operatingHours.some(
+                  (hours) => hours.placeId === stop.placeId && hours.closed,
+                ) ||
+                state.plan?.travelLegs.some(
+                  (leg) =>
+                    (leg.fromPlaceId === stop.placeId ||
+                      leg.toPlaceId === stop.placeId) &&
+                    !["available", "permission-unqualified"].includes(
+                      leg.outcome,
+                    ),
+                )
+                  ? ("fresh-evidence-required" as const)
+                  : ("current-check-required" as const),
+              restore: {
+                originalIndex: state.plan?.stops.indexOf(stop) ?? 0,
+                desiredArrivalMinute: stop.desiredArrivalMinute ?? null,
+              },
+              evidenceRetrievedAt:
+                state.plan?.operatingHours.find(
+                  (hours) => hours.placeId === stop.placeId,
+                )?.retrievedAt ?? null,
               reason:
                 "Removed from this day by the organiser; retained in the Trip shortlist and selected Places.",
             })),

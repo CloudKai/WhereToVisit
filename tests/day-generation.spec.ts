@@ -130,7 +130,7 @@ test("fictional provider evidence gives visible estimated timing and preserves u
   page,
 }) => {
   const trip = await setup(page.request);
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   await page
     .getByRole("button", { name: "Generate day plan", exact: true })
     .click();
@@ -205,7 +205,7 @@ test("closed and overfull fictional selections stay accounted for despite Must g
     ).status(),
   ).toBe(200);
   writeFileSync(source, JSON.stringify(evidence("available", 15, true)));
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   await page
     .getByRole("button", { name: "Generate day plan", exact: true })
     .click();
@@ -260,7 +260,7 @@ test("unavailable legs and missing hours never become precise timeline facts", a
 }) => {
   const trip = await setup(page.request);
   writeFileSync(source, JSON.stringify(evidence("mode-unsupported")));
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   await page
     .getByRole("button", { name: "Generate day plan", exact: true })
     .click();
@@ -305,7 +305,7 @@ test("provider failure and mismatched or fabricated responses preserve request a
   page,
 }) => {
   const trip = await setup(page.request);
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   await page
     .getByRole("button", { name: "Generate day plan", exact: true })
     .click();
@@ -554,7 +554,7 @@ test("actual failed generation persistence and lost response preserve prior resu
 }) => {
   test.setTimeout(120000);
   const trip = await setup(page.request);
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   const generate = page.getByRole("button", {
     name: "Generate day plan",
     exact: true,
@@ -790,7 +790,7 @@ test("loading a generated result never resets an organiser edit to saved day inp
       await route.continue();
     },
   );
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   const panel = page.getByRole("region", { name: "Plan my day", exact: true });
   await panel.getByLabel("Visit date (Shanghai)").fill("2026-12-30");
   release();

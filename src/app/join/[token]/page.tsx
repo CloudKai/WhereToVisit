@@ -11,7 +11,7 @@ export default async function Join({
   params: Promise<{ token: string }>;
 }) {
   return (
-    <section className="page-section">
+    <section className="page-section trip-page">
       <h1>Trip invitation</h1>
       <GuestTrip token={(await params).token} />
     </section>

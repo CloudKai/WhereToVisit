@@ -54,7 +54,7 @@
         {
           "provider": "Apple Maps",
           "placeId": null,
-          "url": "https://maps.apple.com/?q=%E6%98%9F%E5%B7%B4%E5%85%8B%E8%87%BB%E9%80%89%E4%B8%8A%E6%B5%B7%E7%83%98%E7%84%99%E5%B7%A5%E5%9D%8A%20%E4%B8%8A%E6%B5%B7%E5%B8%82%E9%9D%99%E5%AE%89%E5%8C%BA%E5%8D%97%E4%BA%AC%E8%A5%BF%E8%B7%AF789%E5%8F%B7N110%E5%8F%8A201",
+          "url": "https://maps.apple.com/search?center=31.2%2C121.5&span=0.2%2C0.2&query=%E6%98%9F%E5%B7%B4%E5%85%8B%E8%87%BB%E9%80%89%E4%B8%8A%E6%B5%B7%E7%83%98%E7%84%99%E5%B7%A5%E5%9D%8A%20%E4%B8%8A%E6%B5%B7%E5%B8%82%E9%9D%99%E5%AE%89%E5%8C%BA%E5%8D%97%E4%BA%AC%E8%A5%BF%E8%B7%AF789%E5%8F%B7N110%E5%8F%8A201",
           "linkKind": "search",
           "surface": "public-web-map-link / external-address-search",
           "apiVersion": null,
@@ -62,11 +62,32 @@
           "returnedAddress": null,
           "language": null,
           "coordinates": null,
-          "verifiedAt": "2026-10-12",
+          "verifiedAt": "2026-10-16",
           "qualification": "qualified",
-          "qualificationNotes": "Qualified only as an external address-search page: the public page loaded and preserved the source-derived query. Search results, exact provider match, map pin, directions, native opening and reviews were not verified."
+          "qualificationNotes": "External address search around a broad Shanghai city area, not branch coordinates or an exact Place link. The full source-derived query returned the Roastery at 789 Nanjing West Road, N110 and N201 in a desktop browser check on 16 October 2026. Compare the result with the source address before travelling; iPhone/native opening, pin accuracy, directions and reviews remain unverified."
         }
-      ]
+      ],
+      "photo": {
+        "assetId": "roastery-codas-2024",
+        "title": "Starbucks Reserve Roastery Shanghai 02.jpg",
+        "alt": "Coffee roasting equipment and transport pipes inside the Shanghai Roastery in October 2024",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Starbucks_Reserve_Roastery_Shanghai_02.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/4/43/Starbucks_Reserve_Roastery_Shanghai_02.jpg",
+        "author": "Codas",
+        "authorUrl": "https://commons.wikimedia.org/wiki/User:Codas",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "photographedAt": "2024-10-28",
+        "publishedAt": "2024-12-02T15:32:00Z",
+        "checkedAt": "2026-10-14",
+        "relevance": "The uploader identifies the Shanghai Roastery; the photograph shows its roasting equipment and interior. It does not confirm present operation or an exact map pin.",
+        "changes": "Original unchanged; displayed smaller without cropping.",
+        "width": 5712,
+        "height": 4284,
+        "sha256": "5e6f3d4e9391ae0e0a79481792416a816a04cce7ba142dc80ce1d97c3da81fb2",
+        "rightsStatus": "qualified",
+        "rightsExpiresAt": null
+      }
     },
     {
       "id": "bluebottle-zhangyuan",
@@ -124,9 +145,9 @@
           "returnedAddress": null,
           "language": null,
           "coordinates": null,
-          "verifiedAt": "2026-10-12",
+          "verifiedAt": "2026-10-16",
           "qualification": "qualified",
-          "qualificationNotes": "Qualified only as an external address-search page: the public page loaded and preserved the source-derived query. Search results, exact provider match, map pin, directions, native opening and reviews were not verified."
+          "qualificationNotes": "External address-search page only. Known wrong or conflicting results: this search returned an unrelated Singapore place; a Shanghai-focused name search showed a different street number. Do not use the result as a verified branch. Compare 240 Maoming North Road, W5-1A with the merchant store list above and manually check the address in your map. Exact match, pin, directions and native opening remain unverified."
         }
       ]
     },

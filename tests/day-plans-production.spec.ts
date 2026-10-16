@@ -47,6 +47,10 @@ test("solo organiser saves a Shanghai one-day draft without optional preferences
   await expect(
     page.getByLabel("Select Zhangyuan for a day plan"),
   ).toBeChecked();
+  await page
+    .getByRole("navigation", { name: "Trip views" })
+    .getByRole("link", { name: "Day", exact: true })
+    .click();
   const panel = page.getByRole("region", { name: "Plan my day" });
   await panel.getByLabel("Visit date (Shanghai)").fill("2026-12-31");
   await panel.getByRole("button", { name: "Save one-day draft" }).click();

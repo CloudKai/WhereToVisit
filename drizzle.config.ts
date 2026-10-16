@@ -8,6 +8,7 @@ export default defineConfig({
     "./src/server/db/catalogue-schema.ts",
     "./src/server/db/import-schema.ts",
     "./src/server/db/trip-schema.ts",
+    "./src/server/db/social-reference-schema.ts",
   ],
   out: "./drizzle",
   dialect: "sqlite",

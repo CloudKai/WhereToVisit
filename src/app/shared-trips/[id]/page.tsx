@@ -11,7 +11,7 @@ export default async function SharedTrip({
   params: Promise<{ id: string }>;
 }) {
   return (
-    <section className="page-section">
+    <section className="page-section trip-page">
       <h1>Your guest access</h1>
       <GuestTrip tripId={(await params).id} />
     </section>

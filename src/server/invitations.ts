@@ -7,6 +7,7 @@ import type {
   Trip,
   TripInvitation,
 } from "@/shared/contracts";
+import { textError, textPolicies } from "@/shared/text-policy";
 import { getAuthConfiguration } from "./config";
 import { dayPlanState } from "./day-plan-state";
 import { openDatabase } from "./db/connection";
@@ -15,6 +16,7 @@ import {
   projectedDayPlanIds,
 } from "./generated-day-plan-state";
 import { TripFailure, visibleTrip } from "./trips";
+import { savedVisitFacts } from "./visit-facts";
 
 type Database = ReturnType<typeof openDatabase>["sqlite"];
 type InvitationRecord = Omit<TripInvitation, "url"> & {
@@ -209,6 +211,7 @@ function shared(
       savedPlaces: trip.savedPlaces.map((member) => ({
         placeId: member.placeId,
         place: member.place,
+        visitFacts: savedVisitFacts(member),
         importedEvidence: member.importedEvidence.map((evidence) => ({
           source: evidence.source,
           extraction: evidence.extraction,
@@ -247,16 +250,8 @@ export function joinInvitation(
         expiresAt: null,
         resumed: true,
       };
-    if (
-      typeof displayName !== "string" ||
-      !displayName.trim() ||
-      Array.from(displayName.trim()).length > 80 ||
-      /[\p{Cc}\p{Cf}]/u.test(displayName)
-    )
-      throw new TripFailure(
-        "invalid-display-name",
-        "Use a display name of 1–80 characters without control characters.",
-      );
+    const nameError = textError(displayName, textPolicies.guestName);
+    if (nameError) throw new TripFailure("invalid-display-name", nameError);
     const count = (
       db
         .prepare(
@@ -272,7 +267,7 @@ export function joinInvitation(
       );
     const participant: ParticipantRecord = {
       id: randomUUID(),
-      displayName: displayName.trim(),
+      displayName: (displayName as string).trim(),
       displayNumber: count + 1,
       generation: invitation.generation,
       dataKind: trip.dataKind,

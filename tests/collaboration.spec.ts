@@ -305,8 +305,12 @@ test("two browser guests discuss choices and organiser accepts without automatic
     await expect(
       alex.getByRole("region", { name: "Place suggestions" }),
     ).toContainText("pending");
-    await page.goto("/trips");
+    await page.goto("/trips?view=group");
     await page.getByRole("button", { name: "Accept suggestion" }).click();
+    await page
+      .getByRole("navigation", { name: "Trip views" })
+      .getByRole("link", { name: "Places", exact: true })
+      .click();
     await expect(
       page.getByLabel("Select West branch for a day plan"),
     ).toBeVisible();

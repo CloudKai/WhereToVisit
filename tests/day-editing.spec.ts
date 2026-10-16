@@ -130,7 +130,7 @@ test("edited desired times expose fictional hours, travel and next-day conflicts
   page,
 }) => {
   const trip = await prepare(page.request, null);
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   const result = page.getByRole("region", {
     name: "Generated day plan",
     exact: true,
@@ -439,7 +439,7 @@ test("failed edit persistence and a lost response retain the saved day and captu
   const trip = await prepare(page.request);
   const url = `/api/trips/${trip.id}/generated-day-plan`;
   const before = (await (await page.request.get(url)).json()).generatedDayPlan;
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   const result = page.getByRole("region", {
     name: "Generated day plan",
     exact: true,

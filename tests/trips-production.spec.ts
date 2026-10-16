@@ -69,7 +69,7 @@ test("production real accounts save source-backed canonical branches and recover
   ).toEqual(savedTrip);
   await page.goto("/trips", { waitUntil: "domcontentloaded" });
   await expect(
-    page.getByRole("region", { name: "Saved shortlist" }),
+    page.getByRole("region", { name: "Trip workspace", exact: true }),
   ).toContainText("Shanghai source shortlist");
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });

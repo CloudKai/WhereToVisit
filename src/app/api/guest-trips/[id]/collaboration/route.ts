@@ -19,7 +19,7 @@ export async function POST(request: Request, context: Context) {
   try {
     requireSameOrigin(request);
     const authority = { browserToken: await guestBrowserToken() };
-    const input = await boundedJson(request);
+    const input = await boundedJson(request, 16384);
     return tripResponse({
       collaboration: await changeCollaboration(
         (await context.params).id,

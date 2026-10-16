@@ -131,7 +131,14 @@ async function newTrip(page: Page, title: string) {
     id: await page.getByLabel("Your Trip", { exact: true }).inputValue(),
   };
 }
+async function tripView(page: Page, name: string) {
+  await page
+    .getByRole("navigation", { name: "Trip views" })
+    .getByRole("link", { name, exact: true })
+    .click();
+}
 async function plan(page: Page) {
+  await tripView(page, "Day");
   const inputs = page.getByRole("region", { name: "Plan my day", exact: true });
   await inputs.getByLabel("Visit date (Shanghai)").fill("2026-12-31");
   await inputs.getByRole("button", { name: "Save one-day draft" }).click();
@@ -216,6 +223,7 @@ for (const width of [375, 1280]) {
           exact: true,
         }),
       ).toHaveCount(2);
+      await tripView(page, "Manage");
       await page.getByRole("button", { name: "Create invitation" }).click();
       const link = await page
         .getByLabel("Invitation link", { exact: true })
@@ -227,6 +235,7 @@ for (const width of [375, 1280]) {
       await guest
         .getByLabel("Your preference for East branch")
         .selectOption("must-go");
+      await tripView(guest, "Group");
       await expect(
         guest.getByRole("region", { name: "Discussion for East branch" }),
       ).toContainText("Must go 1");
@@ -248,8 +257,10 @@ for (const width of [375, 1280]) {
       await expect(
         guest.getByRole("region", { name: "Place suggestions" }),
       ).toContainText("pending");
+      await tripView(page, "Group");
       await page.getByRole("button", { name: "Refresh collaboration" }).click();
       await page.getByRole("button", { name: "Accept suggestion" }).click();
+      await tripView(page, "Places");
       await expect(
         page.getByLabel("Select West branch for a day plan"),
       ).not.toBeChecked();
@@ -301,6 +312,7 @@ for (const width of [375, 1280]) {
         "fictional-cafe-west",
       ]);
       await guest.reload();
+      await tripView(guest, "Day");
       await expect(
         guest.getByRole("region", { name: "Generated day plan", exact: true }),
       ).toContainText("User-desired arrival 11:30");
@@ -310,6 +322,7 @@ for (const width of [375, 1280]) {
       await expect(
         guest.getByRole("region", { name: "Discussion for East branch" }),
       ).toContainText("Must go 1");
+      await tripView(guest, "Places");
       await guest
         .getByText("Shared sources and branch evidence", { exact: true })
         .first()
@@ -396,6 +409,7 @@ for (const width of [375, 1280]) {
       ).toBe(404);
       await fit(page, info, "owner-edited");
       await fit(guest, info, "guest-edited");
+      await tripView(page, "Manage");
       await page.getByRole("button", { name: "Disable invitation" }).click();
       await expect(
         page.getByRole("status").filter({ hasText: "Invitation disabled" }),
@@ -424,6 +438,7 @@ for (const width of [375, 1280]) {
         ).status(),
       ).toBe(404);
       await fit(guest, info, "revoked");
+      await tripView(page, "Manage");
       await page.getByRole("button", { name: "Sign out", exact: true }).click();
       const returningContext = await browser.newContext({
         viewport: { width, height: 900 },
@@ -440,12 +455,14 @@ for (const width of [375, 1280]) {
         await returning
           .getByRole("button", { name: "Sign in", exact: true })
           .click();
+        await tripView(returning, "Day");
         await expect(
           returning.getByRole("region", {
             name: "Generated day plan",
             exact: true,
           }),
         ).toContainText("User-desired arrival 11:30");
+        await tripView(returning, "Group");
         await expect(
           returning.getByRole("region", { name: "Discussion for East branch" }),
         ).toContainText("Keep the source");
@@ -549,6 +566,9 @@ test("a stale import continuation leaves the current organiser's private Trips a
   await expect(
     page.getByRole("heading", { name: saved.title, exact: true }),
   ).toBeVisible();
+  if (await page.getByRole("navigation", { name: "Trip views" }).count())
+    await tripView(page, "Manage");
+  else await page.getByText("Manage account", { exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Sign out", exact: true }),
   ).toBeVisible();
@@ -623,6 +643,9 @@ test("a transient initial save failure offers an actionable retry after current-
   await page.goto("/trips?placeId=fictional-cafe-east");
   const failure = page.getByRole("alert", { name: "Trip request failed" });
   await expect(failure).toContainText("Retry");
+  if (await page.getByRole("navigation", { name: "Trip views" }).count())
+    await tripView(page, "Manage");
+  else await page.getByText("Manage account", { exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Sign out", exact: true }),
   ).toBeVisible();

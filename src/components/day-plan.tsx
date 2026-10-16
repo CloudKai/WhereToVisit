@@ -5,17 +5,25 @@ import type {
   DayPlanRequest,
   GeneratedDayPlanState,
   Place,
+  SavedVisitFacts,
   Trip,
 } from "@/shared/contracts";
+import { textPolicies } from "@/shared/text-policy";
 import { GeneratedDayPlan } from "./generated-day-plan";
+import { TextField } from "./text-field";
+import type { WorkspaceActivity, WorkspaceDay } from "./trip-workspace";
 export function SharedDayPlan({
   state,
   generated,
   places,
+  visitFacts,
+  selectedPlaceIds,
 }: {
   state: DayPlanDraftState;
   generated: GeneratedDayPlanState;
   places: Place[];
+  visitFacts?: Record<string, SavedVisitFacts | undefined>;
+  selectedPlaceIds: string[];
 }) {
   const draft = state.draft;
   return (
@@ -47,10 +55,19 @@ export function SharedDayPlan({
         <p>The organiser has not saved a day draft yet.</p>
       )}
       <p>
+        Start, budget and dietary text are shared preferences, not verified
+        travel or venue constraints.
+      </p>
+      <p>
         Guests can read this context. Only the organiser can change chosen stops
         or inputs or generate the itinerary.
       </p>
-      <GeneratedDayPlan state={generated} places={places} />
+      <GeneratedDayPlan
+        state={generated}
+        places={places}
+        visitFacts={visitFacts}
+        selectedPlaceIds={selectedPlaceIds}
+      />
     </section>
   );
 }
@@ -66,10 +83,14 @@ export function DayPlanInputs({
   trip,
   onDenied,
   onTripReload,
+  onWorkspaceDay,
+  onActivity,
 }: {
   trip: Trip;
   onDenied: () => void;
   onTripReload: () => Promise<void>;
+  onWorkspaceDay?: (day: WorkspaceDay) => void;
+  onActivity?: (activity: WorkspaceActivity) => void;
 }) {
   const [generated, setGenerated] = useState<GeneratedDayPlanState>({
     plan: null,
@@ -87,7 +108,40 @@ export function DayPlanInputs({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const retry = useRef<(() => Promise<void>) | null>(null);
+  const retryMutation = useRef(false);
+  const [arrivalDirty, setArrivalDirty] = useState(false);
   const initialized = useRef(false);
+  const selectionChanged =
+    !!state && (trip.selectionRevision ?? 0) !== state.selectionRevision;
+  const draftNeedsReview = !!state?.needsReview || selectionChanged;
+  const saved = state?.draft?.request;
+  const inputsDirty =
+    !!state &&
+    (visitDate !== (saved?.visitDate ?? "") ||
+      startArea !== (saved?.startArea ?? "") ||
+      budget !== (saved?.budget ?? "") ||
+      dietaryNeeds !== (saved?.dietaryNeeds ?? "") ||
+      pace !== (saved?.pace ?? null) ||
+      mode !== (saved?.mode ?? "walking-transit"));
+  useEffect(() => {
+    onActivity?.({
+      busy: busy || (!state && !error),
+      error,
+      dirty: inputsDirty || arrivalDirty,
+      interrupted: retryMutation.current && (busy || !!retry.current),
+      label: "Day",
+    });
+  }, [inputsDirty, busy, error, state, arrivalDirty, onActivity]);
+  useEffect(() => {
+    if (state)
+      onWorkspaceDay?.({
+        visitDate: state.draft?.request.visitDate ?? null,
+        includedIds: generated.plan?.stops.map((stop) => stop.placeId) ?? [],
+        needsReview: draftNeedsReview || generated.needsReview,
+        hasDraft: !!state.draft,
+        hasPlan: !!generated.plan,
+      });
+  }, [state, generated, draftNeedsReview, onWorkspaceDay]);
   async function request(input?: unknown) {
     const response = await fetch(`/api/trips/${trip.id}/day-plan`, {
       cache: "no-store",
@@ -107,12 +161,13 @@ export function DayPlanInputs({
       );
     return value.dayPlan as DayPlanDraftState;
   }
-  async function run(operation: () => Promise<void>) {
+  async function run(operation: () => Promise<void>, mutation = false) {
     if (busy) return;
     setBusy(true);
     setError("");
     setNotice("");
     retry.current = operation;
+    retryMutation.current = mutation;
     try {
       await operation();
       retry.current = null;
@@ -133,13 +188,40 @@ export function DayPlanInputs({
       setBusy(false);
     }
   }
-  function applyRequest(draft?: DayPlanRequest) {
-    setVisitDate(draft?.visitDate ?? "");
-    setStartArea(draft?.startArea ?? "");
-    setBudget(draft?.budget ?? "");
-    setDietaryNeeds(draft?.dietaryNeeds ?? "");
-    setPace(draft?.pace ?? null);
-    setMode(draft?.mode ?? "walking-transit");
+  function applyRequest(
+    draft?: DayPlanRequest,
+    submitted?: Partial<DayPlanRequest>,
+  ) {
+    setVisitDate((current) =>
+      !submitted || current === submitted.visitDate
+        ? (draft?.visitDate ?? "")
+        : current,
+    );
+    setStartArea((current) =>
+      !submitted || current === (submitted.startArea ?? "")
+        ? (draft?.startArea ?? "")
+        : current,
+    );
+    setBudget((current) =>
+      !submitted || current === (submitted.budget ?? "")
+        ? (draft?.budget ?? "")
+        : current,
+    );
+    setDietaryNeeds((current) =>
+      !submitted || current === (submitted.dietaryNeeds ?? "")
+        ? (draft?.dietaryNeeds ?? "")
+        : current,
+    );
+    setPace((current) =>
+      !submitted || current === submitted.pace
+        ? (draft?.pace ?? null)
+        : current,
+    );
+    setMode((current) =>
+      !submitted || current === submitted.mode
+        ? (draft?.mode ?? "walking-transit")
+        : current,
+    );
   }
   async function load(replaceFields: boolean) {
     const value = await request();
@@ -161,11 +243,89 @@ export function DayPlanInputs({
   }
   // biome-ignore lint/correctness/useExhaustiveDependencies: the parent keys this view to Trip/data kind; selection changes refresh its revision without discarding edited preferences.
   useEffect(() => {
+    // Selection refresh must not replace an interrupted mutation identity.
+    // Explicit retry acknowledges that operation under current authority/revisions.
+    if (retryMutation.current && retry.current) return;
     void run(() => load(false));
   }, [trip.selectionRevision]);
   return (
     <section aria-label="Plan my day" className="import-job">
       <h3>Plan my day</h3>
+      <GeneratedDayPlan
+        selectedPlaceIds={trip.selectedPlaceIds}
+        state={{
+          ...generated,
+          needsReview: generated.needsReview || selectionChanged,
+        }}
+        busy={busy}
+        onEdit={(stops) => {
+          const input = {
+            operationId: crypto.randomUUID(),
+            expectedRevision: generated.plan?.revision ?? 0,
+            stops,
+          };
+          void run(async () => {
+            const response = await fetch(
+              `/api/trips/${trip.id}/generated-day-plan`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(input),
+                cache: "no-store",
+              },
+            );
+            const result = await response.json();
+            if (!response.ok)
+              throw new DraftFailure(
+                result.error?.message ?? "Editing unavailable.",
+                response.status,
+              );
+            setGenerated(result.generatedDayPlan);
+            setReplaceEdited(false);
+            setNotice(
+              "Day plan edits confirmed saved. Review warnings before visiting.",
+            );
+          }, true);
+        }}
+        onRestore={(placeId) => {
+          const input = {
+            operationId: crypto.randomUUID(),
+            placeId,
+            planId: generated.plan?.id,
+            dataKind: trip.dataKind,
+            expectedRevision: generated.plan?.revision,
+            requestRevision: generated.plan?.requestRevision,
+            selectionRevision: generated.plan?.selectionRevision,
+          };
+          void run(async () => {
+            const response = await fetch(
+              `/api/trips/${trip.id}/generated-day-plan/restore`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(input),
+                cache: "no-store",
+              },
+            );
+            const result = await response.json();
+            if (!response.ok)
+              throw new DraftFailure(
+                result.error?.message ?? "Restore unavailable.",
+                response.status,
+              );
+            setGenerated(result.generatedDayPlan);
+            setReplaceEdited(false);
+            setNotice(
+              "Restored stop confirmed saved. Review current hours and travel warnings before visiting.",
+            );
+          }, true);
+        }}
+        onDirtyChange={setArrivalDirty}
+        places={trip.savedPlaces.map((member) => member.place)}
+        visitFacts={Object.fromEntries(
+          trip.savedPlaces.map((member) => [member.placeId, member.visitFacts]),
+        )}
+      />
       <p>
         Choose confirmed branches in your saved shortlist, then save inputs for
         one Shanghai day. Votes are guidance; solo planning needs no votes.
@@ -179,7 +339,7 @@ export function DayPlanInputs({
       <p>
         Exact maps and real routes remain unavailable.{" "}
         {generated.plan
-          ? "Review the saved ordering, unresolved timing and warnings below."
+          ? "Review the saved ordering, unresolved timing and warnings above."
           : "No schedule or travel timings have been generated."}
       </p>
       <p>
@@ -197,7 +357,8 @@ export function DayPlanInputs({
               type="button"
               disabled={busy}
               onClick={() => {
-                if (retry.current) void run(retry.current);
+                if (retry.current)
+                  void run(retry.current, retryMutation.current);
               }}
             >
               Retry day request
@@ -217,7 +378,7 @@ export function DayPlanInputs({
           </button>
         </div>
       )}
-      {state?.needsReview && (
+      {draftNeedsReview && (
         <p role="status">
           Chosen Places changed since this draft. Review your selections and
           save the draft again.
@@ -241,7 +402,7 @@ export function DayPlanInputs({
             void run(async () => {
               const value = await request(input);
               setState(value);
-              applyRequest(value.draft?.request);
+              applyRequest(value.draft?.request, input);
               const response = await fetch(
                 `/api/trips/${trip.id}/generated-day-plan`,
                 { cache: "no-store" },
@@ -253,7 +414,7 @@ export function DayPlanInputs({
                   ? "The previous save was confirmed, but chosen Places now need review."
                   : "One-day draft saved. Review before generating a plan.",
               );
-            });
+            }, true);
           }}
         >
           <label htmlFor="day-visit-date">Visit date (Shanghai)</label>
@@ -266,26 +427,31 @@ export function DayPlanInputs({
             value={visitDate}
             onChange={(event) => setVisitDate(event.target.value)}
           />
+          <p id="day-shared-preferences" className="day-input-notice">
+            Saved hotel/start area, budget and dietary needs are visible to
+            invited guests. These are your preferences; start location, cost,
+            venue suitability and allergy safety have not been verified.
+          </p>
           <label htmlFor="day-start">Start area or hotel (optional)</label>
-          <input
+          <TextField
             id="day-start"
-            maxLength={400}
+            policy={textPolicies.startArea}
             value={startArea}
-            onChange={(event) => setStartArea(event.target.value)}
+            onChange={setStartArea}
           />
           <label htmlFor="day-budget">Budget (optional)</label>
-          <input
+          <TextField
             id="day-budget"
-            maxLength={240}
+            policy={textPolicies.budget}
             value={budget}
-            onChange={(event) => setBudget(event.target.value)}
+            onChange={setBudget}
           />
           <label htmlFor="day-diet">Dietary needs (optional)</label>
-          <input
+          <TextField
             id="day-diet"
-            maxLength={1000}
+            policy={textPolicies.dietaryNeeds}
             value={dietaryNeeds}
-            onChange={(event) => setDietaryNeeds(event.target.value)}
+            onChange={setDietaryNeeds}
           />
           <label htmlFor="day-pace">Pace (optional)</label>
           <select
@@ -311,6 +477,12 @@ export function DayPlanInputs({
             <option value="walking-transit">Walking / public transit</option>
             <option value="taxi-car">Taxi / car</option>
           </select>
+          {inputsDirty && (
+            <p role="status">
+              Unsaved planning inputs. Save one-day draft before generating from
+              these preferences.
+            </p>
+          )}
           <button type="submit" disabled={busy}>
             Save one-day draft
           </button>
@@ -334,9 +506,21 @@ export function DayPlanInputs({
               </button>
             </div>
           )}
+          {(inputsDirty || arrivalDirty) && (
+            <p role="status">
+              Unsaved inputs are not used in generation. Save planning inputs
+              first. Earlier unsaved arrivals will be retained separately for
+              review and will not be applied to a regenerated day.
+            </p>
+          )}
+          {draftNeedsReview && (
+            <p role="status">
+              Review chosen Places and save one-day draft before generating.
+            </p>
+          )}
           <button
             type="button"
-            disabled={busy || state.needsReview}
+            disabled={busy || draftNeedsReview || inputsDirty}
             onClick={() => {
               if (generated.plan?.manuallyEdited && !replaceEdited) {
                 setReplaceEdited(true);
@@ -370,47 +554,13 @@ export function DayPlanInputs({
                 setNotice(
                   "Day plan confirmed saved. Review warnings before visiting.",
                 );
-              });
+              }, true);
             }}
           >
             {replaceEdited ? "Replace edited day plan" : "Generate day plan"}
           </button>
         </>
       )}
-      <GeneratedDayPlan
-        state={generated}
-        busy={busy}
-        onEdit={(stops) => {
-          const input = {
-            operationId: crypto.randomUUID(),
-            expectedRevision: generated.plan?.revision ?? 0,
-            stops,
-          };
-          void run(async () => {
-            const response = await fetch(
-              `/api/trips/${trip.id}/generated-day-plan`,
-              {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(input),
-                cache: "no-store",
-              },
-            );
-            const result = await response.json();
-            if (!response.ok)
-              throw new DraftFailure(
-                result.error?.message ?? "Editing unavailable.",
-                response.status,
-              );
-            setGenerated(result.generatedDayPlan);
-            setReplaceEdited(false);
-            setNotice(
-              "Day plan edits confirmed saved. Review warnings before visiting.",
-            );
-          });
-        }}
-        places={trip.savedPlaces.map((member) => member.place)}
-      />
     </section>
   );
 }

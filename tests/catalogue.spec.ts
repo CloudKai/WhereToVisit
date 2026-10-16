@@ -26,6 +26,9 @@ test("anonymous visitor sees distinct branches and dated sourced recommendations
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/discover");
+    await page
+      .getByText("2 branches · Catalogue coverage & limits", { exact: true })
+      .click();
     await expect(
       page.getByText("Fictional test catalogue.", { exact: false }),
     ).toBeVisible();

@@ -21,8 +21,10 @@ export default defineConfig({
   testMatch: [
     "catalogue.spec.ts",
     "discovery.spec.ts",
+    "discovery-reflow.spec.ts",
     "map-area.spec.ts",
     "import.spec.ts",
+    "import-journey.spec.ts",
     "resolution.spec.ts",
     "trips.spec.ts",
     "invitations.spec.ts",

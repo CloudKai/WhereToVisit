@@ -13,7 +13,7 @@ test("visitor can navigate discovery, import and trips", async ({
     const navigation = page.getByRole("navigation", { name: "Primary" });
     for (const [name, path, heading] of [
       ["Discover", "/discover", "Discover Shanghai"],
-      ["Import", "/import", "Bring your inspiration"],
+      ["Import", "/import", "Import an article"],
       ["Trips", "/trips", "Your Trips"],
     ]) {
       const link = navigation.getByRole("link", { name, exact: true });
@@ -38,8 +38,14 @@ test("visitor sees the bounded source-backed shortlist on phone and desktop", as
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/discover");
+    await page
+      .getByText("6 branches · Catalogue coverage & limits", { exact: true })
+      .click();
     await expect(
-      page.getByRole("region", { name: "Discovery list" }).getByRole("status"),
+      page
+        .getByRole("region", { name: "Discovery list" })
+        .locator(".catalogue-coverage")
+        .getByRole("status"),
     ).toContainText("Six source-backed Shanghai food and café branches");
     await expect(
       page.getByRole("heading", { name: "Map unavailable" }),

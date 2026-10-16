@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 const headers = { Origin: "http://127.0.0.1:8180" };
@@ -52,7 +53,7 @@ test("organiser generates a grounded real day order with unavailable timing and 
       ).status(),
     ).toBe(200);
   }
-  await page.goto("/trips");
+  await page.goto("/trips?view=day");
   const inputs = page.getByRole("region", { name: "Plan my day", exact: true });
   await inputs.getByLabel("Visit date (Shanghai)").fill("2026-12-31");
   await inputs.getByRole("button", { name: "Save one-day draft" }).click();
@@ -105,6 +106,7 @@ test("organiser generates a grounded real day order with unavailable timing and 
     ).json()
   ).invitation;
   const guest = await browser.newContext();
+  let guestStage = "guest invitation join";
   try {
     expect(
       (
@@ -115,19 +117,33 @@ test("organiser generates a grounded real day order with unavailable timing and 
       ).status(),
     ).toBe(201);
     const guestPage = await guest.newPage();
-    await guestPage.goto(`http://127.0.0.1:8180/shared-trips/${trip.id}`);
+    guestStage = "guest Day page load";
+    await guestPage.goto(
+      `http://127.0.0.1:8180/shared-trips/${trip.id}?view=day`,
+    );
+    guestStage = "guest generated Day read";
     const sharedPlan = guestPage.getByRole("region", {
       name: "Generated day plan",
       exact: true,
     });
     await expect(sharedPlan).toContainText("Timing unresolved");
     await expect(sharedPlan).toContainText("Shanghai Roastery");
+    guestStage = "guest Group organiser-authority disclosure";
+    await guestPage
+      .getByRole("navigation", { name: "Trip views" })
+      .getByRole("link", { name: "Group", exact: true })
+      .click();
     await expect(
       guestPage.getByText(
         "Only the organiser can generate a day plan. Guests can read the saved result. Live routes and real travel timings remain unavailable.",
         { exact: true },
       ),
     ).toBeVisible();
+    guestStage = "guest read-only Day authority";
+    await guestPage
+      .getByRole("navigation", { name: "Trip views" })
+      .getByRole("link", { name: "Day", exact: true })
+      .click();
     await expect(
       guestPage.getByText("Generation is not available yet.", { exact: false }),
     ).toHaveCount(0);
@@ -154,6 +170,29 @@ test("organiser generates a grounded real day order with unavailable timing and 
       path: testInfo.outputPath("generated-real-guest.png"),
       fullPage: true,
     });
+  } catch (failure) {
+    const message = (
+      failure instanceof Error ? failure.message : String(failure)
+    )
+      .replace(/\?[^\s"']*/g, "?<REDACTED>")
+      .replace(
+        /(\/(?:join|invitations|shared-trips|guest-trips|trip-save-intents|trips)\/)[^/\s?"']+/g,
+        "$1<ID>",
+      );
+    writeFileSync(
+      testInfo.outputPath("primary-guest-failure.json"),
+      JSON.stringify(
+        {
+          stage: guestStage,
+          name: failure instanceof Error ? failure.name : "Unknown",
+          message,
+          observedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+    throw failure;
   } finally {
     await guest.close();
   }

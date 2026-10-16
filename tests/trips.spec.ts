@@ -195,6 +195,7 @@ test("explicit authenticated saves retain licensed evidence after draft deletion
     await guestPage.goto(invitation.url);
     await guestPage.getByLabel("Display name").fill("Source companion");
     await guestPage.getByRole("button", { name: "Join as guest" }).click();
+    await guestPage.getByRole("link", { name: "Places", exact: true }).click();
     await guestPage
       .getByText("Shared sources and branch evidence", { exact: true })
       .click();
@@ -321,6 +322,15 @@ test("anonymous discovery continues through real account creation and visible du
     .click();
   await expect(
     page.getByRole("region", { name: "Saved shortlist" }),
+  ).not.toContainText("East branch");
+  await expect(
+    page.getByRole("region", { name: "Pending save" }),
+  ).toContainText("Destination: Weekend coffee");
+  await page
+    .getByRole("button", { name: "Save reviewed branch", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Saved shortlist" }),
   ).toContainText("East branch");
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(
@@ -328,7 +338,7 @@ test("anonymous discovery continues through real account creation and visible du
   ).toContainText("East branch");
   await page.getByLabel("Select East branch for a day plan").click();
   await expect(
-    page.getByText(/1 selected for a future day plan/),
+    page.locator(".workspace-counts").filter({ hasText: "1 chosen for day" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Remove East branch" }).click();
   await expect(
@@ -407,8 +417,16 @@ test("a real storage write failure leaves the private Trip unchanged and offers 
   await expect(
     page.getByRole("heading", { name: "Before storage failure" }),
   ).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Trip views" })
+    .getByRole("link", { name: "Manage", exact: true })
+    .click();
   const configuration = JSON.parse(
-    readFileSync(".data/trip-storage-test.json", "utf8"),
+    readFileSync(
+      process.env.WHERETOVISIT_TEST_STORAGE_CONFIG ??
+        ".data/trip-storage-test.json",
+      "utf8",
+    ),
   );
   // Inject an external storage fault; observe persistence only through public HTTP/UI.
   const lock = new Database(configuration.databasePath);
@@ -565,4 +583,175 @@ test("a fresh import after account switching saves only eligible provenance, inc
     secondPending.importedEvidence[0].source,
   );
   expect((await request.get(`/api/imports/${firstId}`)).status()).toBe(200);
+});
+
+test("return retains the original intent expiry, browser ownership and first reviewing account", async ({
+  page,
+  browser,
+}) => {
+  const sourceId = await imported(page.request);
+  await confirmed(page.request, sourceId);
+  await page.goto(`/trips?placeId=fictional-cafe-east&importId=${sourceId}`);
+  await expect(
+    page.getByRole("heading", { name: "Sign in to save" }),
+  ).toBeVisible();
+  const pendingId = new URL(page.url()).searchParams.get("intentId");
+  expect(pendingId).toBeTruthy();
+  const first = await account(page.request);
+  const firstTrip = await trip(page.request, "First reviewed account");
+  await page.reload();
+  const review = page.getByRole("region", { name: "Pending save" });
+  await expect(review).toContainText(`Account: ${first.email}`);
+  const original = (
+    await (await page.request.get(`/api/trip-save-intents/${pendingId}`)).json()
+  ).intent;
+  await page.reload();
+  await expect(review).toContainText("East branch");
+  const returned = (
+    await (await page.request.get(`/api/trip-save-intents/${pendingId}`)).json()
+  ).intent;
+  expect(returned.expiresAt).toBe(original.expiresAt);
+  expect(returned.importedEvidence).toEqual(original.importedEvidence);
+  const otherBrowser = await browser.newContext();
+  try {
+    await otherBrowser.request.post("/api/auth/sign-in/email", {
+      headers,
+      data: first,
+    });
+    expect(
+      (
+        await otherBrowser.request.get(`/api/trip-save-intents/${pendingId}`)
+      ).status(),
+    ).toBe(404);
+    expect(
+      (
+        await otherBrowser.request.post(`/api/trips/${firstTrip.id}`, {
+          headers,
+          data: { action: "save", intentId: pendingId },
+        })
+      ).status(),
+    ).toBe(404);
+  } finally {
+    await otherBrowser.close();
+  }
+  await page
+    .getByRole("navigation", { name: "Trip views" })
+    .getByRole("link", { name: "Manage", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Sign in to save" }),
+  ).toBeVisible();
+  const second = await account(page.request);
+  await trip(page.request, "Second account");
+  await page.reload();
+  await expect(
+    page.getByRole("alert", { name: "Trip request failed" }),
+  ).toContainText("Pending save not found for this account and browser");
+  await expect(
+    page.getByRole("region", { name: "Pending save" }),
+  ).not.toBeVisible();
+  await expect(
+    page.getByText(`Signed in as ${second.email}. Your Trips are private.`),
+  ).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("intentId")).toBe(pendingId);
+  expect(
+    (
+      await page.request.post("/api/trip-save-intents", {
+        headers,
+        data: { placeId: "fictional-cafe-east", importId: sourceId },
+      })
+    ).status(),
+  ).toBe(404);
+  await page.request.post("/api/auth/sign-out", { headers, data: {} });
+  await page.request.post("/api/auth/sign-in/email", { headers, data: first });
+  // Bounded external deadline injection; assertions use the public HTTP/UI boundary.
+  const configuration = JSON.parse(
+    readFileSync(
+      process.env.WHERETOVISIT_TEST_STORAGE_CONFIG ??
+        ".data/trip-storage-test.json",
+      "utf8",
+    ),
+  );
+  const storage = new Database(configuration.databasePath);
+  try {
+    storage
+      .prepare("UPDATE trip_save_intents SET expires_at=? WHERE id=?")
+      .run("2000-01-01T00:00:00.000Z", pendingId);
+  } finally {
+    storage.close();
+  }
+  await page.reload();
+  await expect(
+    page.getByRole("alert", { name: "Trip request failed" }),
+  ).toContainText("Start a new save");
+  await expect(review).not.toBeVisible();
+  expect(
+    (
+      await page.request.post(`/api/trips/${firstTrip.id}`, {
+        headers,
+        data: { action: "save", intentId: pendingId },
+      })
+    ).status(),
+  ).toBe(404);
+  expect(
+    (await (await page.request.get(`/api/trips/${firstTrip.id}`)).json()).trip
+      .savedPlaces,
+  ).toEqual([]);
+  expect((await page.request.get(`/api/imports/${sourceId}`)).status()).toBe(
+    200,
+  );
+});
+
+test("a pending licensed source snapshot survives original draft expiry without extending it", async ({
+  request,
+}) => {
+  const sourceId = await imported(request, "ResolutionSecond");
+  await confirmed(request, sourceId);
+  const before = (await (await request.get(`/api/imports/${sourceId}`)).json())
+    .job;
+  const pending = await intent(request, "fictional-cafe-east", sourceId);
+  await account(request);
+  const reviewed = (
+    await (await request.get(`/api/trip-save-intents/${pending.id}`)).json()
+  ).intent;
+  expect(
+    (await (await request.get(`/api/imports/${sourceId}`)).json()).job
+      .expiresAt,
+  ).toBe(before.expiresAt);
+  expect(reviewed.expiresAt).toBe(pending.expiresAt);
+  const destination = await trip(request, "Retained source snapshot");
+  const configuration = JSON.parse(
+    readFileSync(
+      process.env.WHERETOVISIT_TEST_STORAGE_CONFIG ??
+        ".data/trip-storage-test.json",
+      "utf8",
+    ),
+  );
+  const storage = new Database(configuration.databasePath);
+  try {
+    storage
+      .prepare("UPDATE import_jobs SET expires_at=? WHERE id=?")
+      .run(0, sourceId);
+  } finally {
+    storage.close();
+  }
+  expect((await request.get(`/api/imports/${sourceId}`)).status()).toBe(404);
+  for (let repeat = 0; repeat < 2; repeat++) {
+    expect(
+      (
+        await request.post(`/api/trips/${destination.id}`, {
+          headers,
+          data: { action: "save", intentId: pending.id },
+        })
+      ).status(),
+    ).toBe(200);
+  }
+  const saved = (
+    await (await request.get(`/api/trips/${destination.id}`)).json()
+  ).trip;
+  expect(saved.savedPlaces).toHaveLength(1);
+  expect(saved.savedPlaces[0].importedEvidence).toEqual(
+    reviewed.importedEvidence,
+  );
 });

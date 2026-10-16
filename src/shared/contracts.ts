@@ -90,6 +90,55 @@ export type Place = {
   }[];
   evidence: SourceEvidence[];
   providerReferences: ProviderReference[];
+  /** Optional for legacy publications and retained saved branch snapshots. */
+  photo?: BranchPhoto | null;
+  /** Manually reviewed practical checks; no fetch or provider permission is implied. */
+  visitFactChecks?: Record<VisitFactField, VisitFactCheck>;
+};
+export type VisitFactField = "address" | "hours" | "operation";
+export type VisitFactCheck = {
+  outcome: "checked" | "unknown" | "failed" | "conflict";
+  checkedAt: string | null;
+  evidenceIds: string[];
+  explanation: string;
+};
+export type SavedVisitFacts = {
+  fields: Record<
+    VisitFactField,
+    VisitFactCheck & {
+      value: string | null;
+      version: number;
+      contentVersion: number;
+      sources: SourceEvidence[];
+      lastChecked: {
+        value: string;
+        checkedAt: string | null;
+        sources: SourceEvidence[];
+      } | null;
+    }
+  >;
+  identityReviewRequired: boolean;
+};
+export type BranchPhoto = {
+  assetId: string;
+  title: string;
+  alt: string;
+  sourceUrl: string;
+  originalUrl: string;
+  author: string;
+  authorUrl: string;
+  license: string;
+  licenseUrl: string;
+  photographedAt: string;
+  publishedAt: string;
+  checkedAt: string;
+  relevance: string;
+  changes: string;
+  width: number;
+  height: number;
+  sha256: string;
+  rightsStatus: "qualified" | "unsupported" | "expired";
+  rightsExpiresAt: string | null;
 };
 export type RecommendationType =
   | "trending"
@@ -206,6 +255,7 @@ export type Trip = {
     evidenceIds: string[];
     place: Place;
     importedEvidence: ResolvedImportPlace["importedEvidence"];
+    visitFacts?: SavedVisitFacts;
   }[];
   selectedPlaceIds: string[];
   selectionRevision?: number;
@@ -247,6 +297,7 @@ export type DayPlan = {
   request: DayPlanRequest;
   requestRevision: number;
   selectionRevision: number;
+  visitFactVersions?: Record<string, Record<VisitFactField, number>>;
   createdAt: string;
   updatedAt: string;
   dataKind: "real" | "fixture";
@@ -288,7 +339,23 @@ export type DayPlan = {
     visitTimeContext: string;
   }[];
   warnings: string[];
-  unscheduledPlaces: { placeId: string; reason: string }[];
+  unscheduledPlaces: {
+    placeId: string;
+    reason: string;
+    // Absent metadata is an ambiguous legacy exclusion, never inferred from prose.
+    cause?:
+      | "manual-removal"
+      | "closure"
+      | "route-conflict"
+      | "capacity-conflict"
+      | "legacy-unknown";
+    restoreEligibility?: "current-check-required" | "fresh-evidence-required";
+    restore?: {
+      originalIndex: number;
+      desiredArrivalMinute: number | null;
+    };
+    evidenceRetrievedAt?: string | null;
+  }[];
 };
 
 export type ImportSourceEvidence = {
@@ -370,6 +437,7 @@ export type SharedGuestTrip = {
     savedPlaces: {
       placeId: string;
       place: Place;
+      visitFacts?: SavedVisitFacts;
       importedEvidence: Omit<
         ResolvedImportPlace["importedEvidence"][number],
         "importId" | "mentionId"

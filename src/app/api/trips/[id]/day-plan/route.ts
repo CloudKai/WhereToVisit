@@ -23,7 +23,7 @@ export async function POST(request: Request, context: Context) {
       dayPlan: dayPlanOperation(
         user.id,
         (await context.params).id,
-        await boundedJson(request),
+        await boundedJson(request, 16384),
       ),
     });
   } catch (error) {

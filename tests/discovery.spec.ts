@@ -130,6 +130,7 @@ test("visitor combines filters, opens attributed details and recovers on phone a
     for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/discover");
+      await page.getByRole("button", { name: "Change filters" }).click();
       await page.getByLabel("Category", { exact: true }).selectOption("cafe");
       await page.getByLabel("Budget", { exact: true }).selectOption("low");
       await page
@@ -231,6 +232,7 @@ test("failed catalogue requests hide stale places and retry the current filters"
   writeFileSync(path, JSON.stringify(discoveryFixture()));
   try {
     await page.goto("/discover");
+    await page.getByRole("button", { name: "Change filters" }).click();
     await expect(page.getByRole("article")).toHaveCount(2);
     writeFileSync(path, JSON.stringify({ invalid: "publication" }));
     await page.getByLabel("Budget", { exact: true }).selectOption("low");

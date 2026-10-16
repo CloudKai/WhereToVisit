@@ -244,6 +244,9 @@ export function applyPlanningEvidence(plan: DayPlan, evidence: Evidence) {
     .filter((id) => closed.has(id))
     .map((placeId) => ({
       placeId,
+      cause: "closure" as const,
+      restoreEligibility: "fresh-evidence-required" as const,
+      evidenceRetrievedAt: evidence.retrievedAt,
       reason:
         "Reliable fictional hours report this branch closed on the selected date; review your selection. Must go cannot override closure.",
     }));
@@ -324,6 +327,9 @@ export function applyPlanningEvidence(plan: DayPlan, evidence: Evidence) {
     if (leg && (leg.durationSeconds === null || leg.outcome !== "available")) {
       plan.unscheduledPlaces.push({
         placeId: stop.placeId,
+        cause: "route-conflict",
+        restoreEligibility: "fresh-evidence-required",
+        evidenceRetrievedAt: evidence.retrievedAt,
         reason:
           "No available mode-specific route from the preceding scheduled stop after earlier conflicts; review before scheduling.",
       });
@@ -337,6 +343,9 @@ export function applyPlanningEvidence(plan: DayPlan, evidence: Evidence) {
     if (departure > Math.min(1080, hours.closesMinute)) {
       plan.unscheduledPlaces.push({
         placeId: stop.placeId,
+        cause: "capacity-conflict",
+        restoreEligibility: "fresh-evidence-required",
+        evidenceRetrievedAt: evidence.retrievedAt,
         reason:
           "Cannot fit evidenced opening hours and the assumed 09:00–18:00 day window with travel and dwell estimates. Must go is a preference, not a scheduling guarantee.",
       });
