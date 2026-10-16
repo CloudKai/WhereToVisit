@@ -256,3 +256,45 @@ test("the header tab only trusts same-site results links", async () => {
     null,
   );
 });
+
+test("pictures are shrunk to fit, never enlarged", async () => {
+  const { fitSize } = await import("../src/lib/media.ts");
+  assert.deepEqual(fitSize(2000, 1000, 1024), { width: 1024, height: 512 });
+  assert.deepEqual(fitSize(1000, 3000, 1024), { width: 341, height: 1024 });
+  assert.deepEqual(
+    fitSize(500, 400, 1024),
+    { width: 500, height: 400 },
+    "small pictures stay as they are",
+  );
+  assert.deepEqual(fitSize(0, 10, 1024), { width: 1, height: 1 });
+  assert.deepEqual(fitSize(Number.NaN, 10, 1024), { width: 1, height: 1 });
+  assert.deepEqual(fitSize(5000, 1, 1024), { width: 1024, height: 1 });
+});
+
+test("video pictures are spread evenly and avoid the very start and end", async () => {
+  const { evenTimes } = await import("../src/lib/media.ts");
+  const times = evenTimes(30, 6);
+  assert.equal(times.length, 6);
+  assert.ok(times[0] > 0 && times[0] <= 0.4, "not the very first moment");
+  assert.ok(
+    times.at(-1) !== undefined && (times.at(-1) as number) < 30,
+    "not the very last moment",
+  );
+  assert.deepEqual(
+    times,
+    [...times].sort((a, b) => a - b),
+  );
+  const gaps = times
+    .slice(1)
+    .map((t, i) => Math.round((t - times[i]) * 100) / 100);
+  assert.ok(Math.max(...gaps) - Math.min(...gaps) < 0.05, "evenly spaced");
+  assert.deepEqual(evenTimes(10, 1), [5]);
+  assert.deepEqual(evenTimes(0, 6), [0]);
+  assert.deepEqual(evenTimes(Number.NaN, 6), [0]);
+  assert.deepEqual(evenTimes(10, 0), [0]);
+  const short = evenTimes(1, 4);
+  assert.ok(
+    short.every((t) => t >= 0 && t <= 1),
+    "a 1-second clip stays inside the clip",
+  );
+});

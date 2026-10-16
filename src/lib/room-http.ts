@@ -46,9 +46,10 @@ export function requireStore():
   };
 }
 
-/** Reads a small JSON object body; throws RoomError for anything else. */
+/** Reads a JSON object body of at most `maxBytes`; throws RoomError for anything else. */
 export async function readJson(
   request: Request,
+  maxBytes: number = MAX_BODY_BYTES,
 ): Promise<Record<string, unknown>> {
   // Requiring JSON means other websites cannot post here with a plain form.
   if (
@@ -60,8 +61,12 @@ export async function readJson(
     throw new RoomError(415, "Expected JSON");
   }
   const text = await request.text();
-  if (text.length > MAX_BODY_BYTES)
-    throw new RoomError(413, "Request too large");
+  if (text.length > maxBytes) {
+    throw new RoomError(
+      413,
+      "That request is too large. Try fewer or smaller images.",
+    );
+  }
   try {
     const value: unknown = JSON.parse(text);
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {

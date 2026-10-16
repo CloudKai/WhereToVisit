@@ -52,14 +52,15 @@ for each day, and let friends vote on it. No accounts.
   Google Maps route (up to 11 stops).
 - **Shareable, not stored.** The trip lives in your browser tab and in the page
   link (`/plan#p=…`). Nothing about it is saved on a server.
-- **From links (`/links`).** Add saved TikTok / Instagram / Xiaohongshu posts.
-  The link is required and kept as the _source_; the caption is optional, but
-  Instagram and Xiaohongshu posts can't be read, so without a caption (or typed
-  place names) there is nothing to search. A progress bar shows each stage while
-  it works and the form is locked until it finishes.
-  The AI picks place names out of that text (a name is dropped unless it is
-  really written there), Geoapify finds where each is, and they appear on a map.
-  You confirm each match, then add places to your trip.
+- **From links (`/links`).** Add saved TikTok / Instagram / Xiaohongshu posts. The
+  link is required and kept as the _source_. To find places, give it something to
+  read: paste the caption or type place names, and/or **upload screenshots or a
+  screen recording** of the post. The AI reads the text visible in the pictures
+  (location tags, captions, on-screen titles, signs), Geoapify finds where each
+  place is, and they appear on a map with their source. Recordings are turned into
+  a few still pictures on your own device, so the video itself is never uploaded.
+  You confirm each match, then add places to your trip. A progress bar shows each
+  stage and the form is locked until it finishes.
 
 ### Share
 
@@ -79,6 +80,11 @@ for each day, and let friends vote on it. No accounts.
 
 - **No ratings or reviews.** No free worldwide source exists. Places without an
   editor recommendation are ordered by how complete their data is, not quality.
+- **Videos are not downloaded or watched.** A link alone cannot be decoded: the
+  platforms forbid other apps from fetching their videos. The app reads only text
+  that is visible in pictures you give it; it does not listen to audio or guess a
+  place from how a scene looks. Pictures and pasted text are sent to OpenAI to be
+  read and are not stored.
 - **Social platforms are not read.** Instagram's terms limit its embed data to
   displaying the post, and Xiaohongshu has no API. TikTok captions are read
   automatically only if you set `TIKTOK_OEMBED=1`, which is off by default:

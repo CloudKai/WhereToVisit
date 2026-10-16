@@ -7,6 +7,29 @@ export const MAX_NAMES_PER_ENTRY = 8;
 export const MAX_MENTIONS = 30;
 export const MAX_HINT_LENGTH = 60;
 
+// ---------- screenshots and video frames ----------
+/** Images a person can add to one post (screenshots, or frames from a recording). */
+export const MAX_IMAGES_PER_ENTRY = 6;
+export const MAX_IMAGES_TOTAL = 12;
+/** Longest side, in pixels, that an image is shrunk to before it is sent. */
+export const IMAGE_MAX_SIDE = 1024;
+/** Largest single image, as a data-URL string (about 300 KB of picture). */
+export const MAX_IMAGE_CHARS = 400_000;
+/** Whole request. Kept under the 4.5 MB request limit common to serverless hosts. */
+export const MAX_REQUEST_BYTES = 3_800_000;
+
+const IMAGE_DATA_URL =
+  /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+/** True for a small JPEG/PNG/WebP data URL; nothing else is ever forwarded. */
+export function isImageDataUrl(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= MAX_IMAGE_CHARS &&
+    IMAGE_DATA_URL.test(value)
+  );
+}
+
 /** One possible location for a place name. */
 export type Candidate = {
   label: string;
@@ -25,13 +48,18 @@ export type Candidate = {
 /** A place named in one post, with the map matches found for it. */
 export type Mention = {
   id: string;
-  /** Exactly as it appears in the text the person provided. */
+  /** Exactly as it appears in the text or images the person provided. */
   name: string;
+  /** Read from the caption text, or from the screenshots/frames. */
+  origin?: NameOrigin;
   entry: number;
   candidates: Candidate[];
 };
 
 export type EntryStatus = "ok" | "no-text" | "bad-link" | "no-places";
+
+/** Where a place name came from. */
+export type NameOrigin = "caption" | "images";
 
 export type EntryResult = {
   index: number;
@@ -51,7 +79,7 @@ export type ExtractResponse = {
 
 /** Where a search is up to. `done` of `total` steps within the phase are finished. */
 export type Progress = {
-  phase: "reading" | "names" | "locating";
+  phase: "reading" | "images" | "names" | "locating";
   done: number;
   total: number;
 };
@@ -64,9 +92,10 @@ export type StreamEvent =
 
 /** Share of the whole search each phase takes, so the bar moves steadily. */
 const PHASE_SPAN: Record<Progress["phase"], [from: number, to: number]> = {
-  reading: [0, 15],
-  names: [15, 40],
-  locating: [40, 100],
+  reading: [0, 8],
+  images: [8, 45],
+  names: [45, 55],
+  locating: [55, 100],
 };
 
 /** 0–100. Never goes backwards within a phase and never exceeds the phase's share. */
@@ -82,6 +111,10 @@ export function progressLabel(p: Progress): string {
       return p.done >= p.total
         ? "Checking your posts…"
         : `Reading post ${p.done + 1} of ${p.total}…`;
+    case "images":
+      return p.done >= p.total
+        ? "Finishing the images…"
+        : `Reading the images for post ${p.done + 1} of ${p.total}…`;
     case "names":
       return "Finding place names…";
     case "locating":
@@ -101,6 +134,8 @@ export type ExtractCapabilities = {
   tiktokCaptions: boolean;
   /** An AI key is set, so place names can be found inside longer captions. */
   ai: boolean;
+  /** The AI can read screenshots and video frames (needs the same key). */
+  images: boolean;
 };
 
 /**

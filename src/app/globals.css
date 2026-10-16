@@ -1664,3 +1664,105 @@ summary {
   margin: 8px 0 0;
   font-weight: 600;
 }
+
+/* ---------- Screenshots and recordings ---------- */
+.media-picker {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.media-button {
+  cursor: pointer;
+}
+.media-button:focus-within {
+  outline: 3px solid var(--teal);
+  outline-offset: 2px;
+}
+.thumbs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.thumbs li {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.thumbs button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ---------- Screenshots and recordings ---------- */
+.media-picker {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.media-button {
+  cursor: pointer;
+}
+.media-button:focus-within {
+  outline: 3px solid var(--teal);
+  outline-offset: 2px;
+}
+.thumbs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.thumbs li {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.thumbs button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}

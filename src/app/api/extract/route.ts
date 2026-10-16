@@ -1,5 +1,8 @@
 import { getConfig } from "@/lib/config";
-import type { ExtractCapabilities } from "@/lib/extract-types";
+import {
+  type ExtractCapabilities,
+  MAX_REQUEST_BYTES,
+} from "@/lib/extract-types";
 import { extractPlaces, validateExtractInput } from "@/lib/extract";
 import { extractStream } from "@/lib/extract-stream";
 import { WindowCounter } from "@/lib/http";
@@ -18,6 +21,7 @@ export async function GET() {
     ready: Boolean(config.geoapifyKey),
     tiktokCaptions: config.tiktokOembed,
     ai: Boolean(config.openaiKey),
+    images: Boolean(config.openaiKey),
   };
   return json(capabilities);
 }
@@ -49,7 +53,7 @@ export async function POST(request: Request) {
         },
       );
     }
-    const body = await readJson(request);
+    const body = await readJson(request, MAX_REQUEST_BYTES);
     // Reject a bad request with a proper status before streaming begins.
     validateExtractInput({ entries: body.entries, hint: body.hint });
 

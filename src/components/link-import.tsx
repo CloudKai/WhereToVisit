@@ -8,6 +8,8 @@ import {
   type ExtractResponse,
   MAX_ENTRIES,
   MAX_HINT_LENGTH,
+  MAX_IMAGES_PER_ENTRY,
+  MAX_IMAGES_TOTAL,
   MAX_TEXT_LENGTH,
   type Mention,
   parseStreamEvent,
@@ -22,10 +24,16 @@ import {
   type Stop,
 } from "@/lib/plan";
 import { parseSocialUrl, PLATFORM_LABEL, type Platform } from "@/lib/social";
+import { filesToImages, MediaError } from "@/lib/media";
 import { MapCanvas, type MapMarker } from "./map";
 import { usePlan } from "./plan-provider";
 
-type Post = { url: string; text: string };
+type Post = {
+  url: string;
+  text: string;
+  /** Small JPEG pictures made on this device from screenshots or a recording. */
+  images: string[];
+};
 const STORAGE_KEY = "wtv.links.v1";
 
 /** Pin colour per source, reusing the day colours. */
@@ -44,7 +52,7 @@ type Saved = {
 };
 
 function emptyPost(): Post {
-  return { url: "", text: "" };
+  return { url: "", text: "", images: [] };
 }
 
 export function LinkImport() {
@@ -77,7 +85,13 @@ export function LinkImport() {
       if (raw) {
         const saved = JSON.parse(raw) as Partial<Saved>;
         if (Array.isArray(saved.posts) && saved.posts.length > 0) {
-          setPosts(saved.posts.slice(0, MAX_ENTRIES));
+          setPosts(
+            saved.posts.slice(0, MAX_ENTRIES).map((post) => ({
+              url: post.url ?? "",
+              text: post.text ?? "",
+              images: [],
+            })),
+          );
         }
         if (typeof saved.hint === "string") setHint(saved.hint);
         if (saved.result) setResult(saved.result);
@@ -92,7 +106,12 @@ export function LinkImport() {
   useEffect(() => {
     if (!restored) return;
     try {
-      const saved: Saved = { posts, hint, result, choice };
+      const saved: Saved = {
+        posts: posts.map((post) => ({ ...post, images: [] })),
+        hint,
+        result,
+        choice,
+      };
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     } catch {
       // storage can be unavailable; the page still works
@@ -105,10 +124,53 @@ export function LinkImport() {
     );
   }
 
-  const filled = posts.filter((p) => p.url.trim() || p.text.trim());
+  const [picking, setPicking] = useState<number | null>(null);
+  const [pickError, setPickError] = useState<{ row: number; text: string }>();
+  const totalImages = posts.reduce((n, p) => n + p.images.length, 0);
+
+  /** Turn chosen screenshots or a recording into small pictures, on this device. */
+  async function addMedia(index: number, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const room = Math.min(
+      MAX_IMAGES_PER_ENTRY - posts[index].images.length,
+      MAX_IMAGES_TOTAL - totalImages,
+    );
+    setPickError(undefined);
+    if (room <= 0) {
+      setPickError({
+        row: index,
+        text: `You can add up to ${MAX_IMAGES_PER_ENTRY} pictures per post (${MAX_IMAGES_TOTAL} in total).`,
+      });
+      return;
+    }
+    setPicking(index);
+    try {
+      const made = await filesToImages([...files], room);
+      setPosts((current) =>
+        current.map((post, i) =>
+          i === index ? { ...post, images: [...post.images, ...made] } : post,
+        ),
+      );
+    } catch (e) {
+      setPickError({
+        row: index,
+        text:
+          e instanceof MediaError
+            ? e.message
+            : "Those files couldn’t be prepared. Try screenshots saved as PNG or JPEG.",
+      });
+    } finally {
+      setPicking(null);
+    }
+  }
+
+  const filled = posts.filter(
+    (p) => p.url.trim() || p.text.trim() || p.images.length > 0,
+  );
   // Every post needs a valid link; the caption is optional.
   const missingLink = filled.some((p) => !parseSocialUrl(p.url));
-  const canSubmit = filled.length > 0 && !missingLink && !busy;
+  const canSubmit =
+    filled.length > 0 && !missingLink && !busy && picking === null;
 
   async function find(event: React.FormEvent) {
     event.preventDefault();
@@ -286,8 +348,10 @@ export function LinkImport() {
               ? parseSocialUrl(post.url)?.platform
               : undefined;
             const bad = post.url.trim() && !platform;
-            const noLink = !post.url.trim() && post.text.trim();
-            const noCaption = platform && !post.text.trim();
+            const noLink =
+              !post.url.trim() && (post.text.trim() || post.images.length > 0);
+            const noCaption =
+              platform && !post.text.trim() && post.images.length === 0;
             return (
               // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and have no identity
               <fieldset className="post-row" key={index}>
@@ -309,7 +373,7 @@ export function LinkImport() {
                   placeholder="Link to the post (required)"
                   value={post.url}
                   maxLength={300}
-                  required={Boolean(post.text.trim())}
+                  required={Boolean(post.text.trim() || post.images.length > 0)}
                   aria-invalid={bad || noLink ? "true" : undefined}
                   onChange={(event) =>
                     update(index, { url: event.target.value })
@@ -323,8 +387,8 @@ export function LinkImport() {
                 )}
                 {noLink && (
                   <p className="hint form-error" role="alert">
-                    Add the link to this post. A caption on its own isn’t
-                    enough.
+                    Add the link to this post. A caption or screenshots on their
+                    own aren’t enough.
                   </p>
                 )}
                 <label className="visually-hidden" htmlFor={`text-${index}`}>
@@ -340,6 +404,65 @@ export function LinkImport() {
                     update(index, { text: event.target.value })
                   }
                 />
+                <div className="media-picker">
+                  <label className="button secondary media-button">
+                    {picking === index
+                      ? "Preparing pictures…"
+                      : post.images.length > 0
+                        ? "+ Add more screenshots"
+                        : "+ Upload screenshots or a screen recording"}
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      className="visually-hidden"
+                      disabled={picking !== null || busy}
+                      onChange={(event) => {
+                        void addMedia(index, event.target.files);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {post.images.length > 0 && (
+                    <ul
+                      className="thumbs"
+                      aria-label={`Pictures for post ${index + 1}`}
+                    >
+                      {post.images.map((src, i) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: small, ordered list of local previews
+                        <li key={i}>
+                          {/* biome-ignore lint/performance/noImgElement: local preview of a picture the person chose */}
+                          <img
+                            src={src}
+                            alt={`Picture ${i + 1} for post ${index + 1}`}
+                          />
+                          <button
+                            type="button"
+                            aria-label={`Remove picture ${i + 1} from post ${index + 1}`}
+                            onClick={() =>
+                              update(index, {
+                                images: post.images.filter((_, j) => j !== i),
+                              })
+                            }
+                          >
+                            ×
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {pickError?.row === index && (
+                  <p className="hint form-error" role="alert">
+                    {pickError.text}
+                  </p>
+                )}
+                {caps && !caps.images && post.images.length > 0 && (
+                  <p className="hint form-error">
+                    Reading pictures needs an OpenAI key on this site, so these
+                    won’t be used.
+                  </p>
+                )}
                 {noCaption && (
                   <p className="hint">
                     {platform === "tiktok"
@@ -416,8 +539,13 @@ export function LinkImport() {
           </div>
         )}
         <p className="hint">
-          The text you paste is sent to OpenAI to find place names, and place
-          names are looked up with Geoapify. Links are never opened by us.
+          Screenshots and recordings are shrunk on your device (a recording is
+          never uploaded — only a few still pictures from it). The pictures and
+          any text you paste are sent to OpenAI to read, and the place names are
+          looked up with Geoapify. Nothing is stored. Crop out anything private,
+          such as notifications. We read only the text visible in the pictures;
+          we don’t listen to audio or guess places from how a scene looks. Links
+          are never opened by us.
         </p>
         {error && (
           <p className="notice" role="alert">
@@ -524,6 +652,9 @@ export function LinkImport() {
                           <div className="stop-main">
                             <h3>{m.name}</h3>
                             <p className="hint">
+                              {m.origin === "images" && (
+                                <>Read from your pictures by AI — check it. </>
+                              )}
                               {source ? (
                                 <>
                                   From{" "}

@@ -55,6 +55,7 @@ function deps(
     geocoded,
     caption: async () => "",
     names: async () => new Map(),
+    vision: async () => [],
     geocode: async (name, hint) => {
       geocoded.push({ name, hint });
       return [candidate(name)];
@@ -493,9 +494,11 @@ test("progress percentages and labels", async () => {
   const { progressPercent, progressLabel } =
     await import("../src/lib/extract-types.ts");
   assert.equal(progressPercent({ phase: "reading", done: 0, total: 4 }), 0);
-  assert.equal(progressPercent({ phase: "reading", done: 4, total: 4 }), 15);
-  assert.equal(progressPercent({ phase: "names", done: 1, total: 1 }), 40);
-  assert.equal(progressPercent({ phase: "locating", done: 5, total: 10 }), 70);
+  assert.equal(progressPercent({ phase: "reading", done: 4, total: 4 }), 8);
+  assert.equal(progressPercent({ phase: "images", done: 0, total: 2 }), 8);
+  assert.equal(progressPercent({ phase: "images", done: 2, total: 2 }), 45);
+  assert.equal(progressPercent({ phase: "names", done: 1, total: 1 }), 55);
+  assert.equal(progressPercent({ phase: "locating", done: 5, total: 10 }), 78);
   assert.equal(
     progressPercent({ phase: "locating", done: 99, total: 10 }),
     100,
@@ -509,6 +512,10 @@ test("progress percentages and labels", async () => {
   assert.equal(
     progressLabel({ phase: "reading", done: 1, total: 3 }),
     "Reading post 2 of 3…",
+  );
+  assert.equal(
+    progressLabel({ phase: "images", done: 0, total: 2 }),
+    "Reading the images for post 1 of 2…",
   );
   assert.equal(
     progressLabel({ phase: "names", done: 0, total: 1 }),
@@ -624,4 +631,216 @@ test("a search that fails halfway ends with a clear error, not a hang", async ()
   assert.ok(
     message?.type === "error" && message.message === "Add at least one post.",
   );
+});
+
+// ---------- screenshots and video frames ----------
+
+const PIXEL =
+  "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+
+test("only small JPEG, PNG and WebP pictures are accepted", async () => {
+  const { isImageDataUrl, MAX_IMAGE_CHARS } =
+    await import("../src/lib/extract-types.ts");
+  assert.ok(isImageDataUrl(PIXEL));
+  assert.ok(isImageDataUrl("data:image/png;base64,iVBORw0KGgo="));
+  assert.ok(isImageDataUrl("data:image/webp;base64,UklGRg=="));
+  for (const bad of [
+    "data:image/svg+xml;base64,PHN2Zz4=",
+    "data:text/html;base64,PHNjcmlwdD4=",
+    "data:image/jpeg;base64,not base64!",
+    "data:image/jpeg;base64,",
+    "https://evil.example/x.jpg",
+    "javascript:alert(1)",
+    `data:image/jpeg;base64,${"A".repeat(MAX_IMAGE_CHARS)}`,
+    42,
+    null,
+  ]) {
+    assert.equal(isImageDataUrl(bad), false, String(bad).slice(0, 40));
+  }
+});
+
+test("image counts and types are bounded before any work is done", async () => {
+  const bad = (entries: unknown) => extractPlaces({ entries }, WITH_AI, deps());
+  await assert.rejects(
+    bad([{ url: IG, images: Array.from({ length: 7 }, () => PIXEL) }]),
+    RoomError,
+  );
+  await assert.rejects(
+    bad([{ url: IG, images: ["data:image/svg+xml;base64,AAAA"] }]),
+    RoomError,
+  );
+  await assert.rejects(bad([{ url: IG, images: [42] }]), RoomError);
+  const many = Array.from({ length: 3 }, (_, i) => ({
+    url: `https://www.instagram.com/reel/Cabcde1234${i}/`,
+    images: Array.from({ length: 5 }, () => PIXEL),
+  }));
+  await assert.rejects(
+    bad(many),
+    RoomError,
+    "15 images in total is over the limit of 12",
+  );
+});
+
+test("a link plus screenshots finds places with no caption at all", async () => {
+  const seen: string[][] = [];
+  const result = await extractPlaces(
+    { entries: [{ url: IG, images: [PIXEL, PIXEL] }], hint: "Shanghai" },
+    WITH_AI,
+    deps({
+      vision: async (images) => {
+        seen.push(images);
+        return ["Yu Garden", "Din Tai Fung"];
+      },
+    }),
+  );
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].length, 2, "all of the post's images go in one request");
+  assert.deepEqual(
+    result.mentions.map((m) => [m.name, m.origin]),
+    [
+      ["Yu Garden", "images"],
+      ["Din Tai Fung", "images"],
+    ],
+  );
+  assert.equal(result.entries[0].status, "ok");
+  assert.match(result.entries[0].message, /2 places found/);
+});
+
+test("caption names and image names merge, and a repeated place counts once", async () => {
+  const result = await extractPlaces(
+    {
+      entries: [
+        { url: IG, text: "Dumplings at Din Tai Fung", images: [PIXEL] },
+      ],
+    },
+    WITH_AI,
+    deps({
+      names: async () => new Map([[0, ["Din Tai Fung"]]]),
+      vision: async () => ["din tai fung", "Yu Garden"],
+    }),
+  );
+  assert.deepEqual(
+    result.mentions.map((m) => [m.name, m.origin]),
+    [
+      ["Din Tai Fung", "caption"],
+      ["Yu Garden", "images"],
+    ],
+  );
+});
+
+test("images are never used without a post link", async () => {
+  let called = 0;
+  const result = await extractPlaces(
+    { entries: [{ url: "", images: [PIXEL] }] },
+    WITH_AI,
+    deps({
+      vision: async () => {
+        called++;
+        return ["Yu Garden"];
+      },
+    }),
+  );
+  assert.equal(result.entries[0].status, "bad-link");
+  assert.equal(called, 0);
+  assert.equal(result.mentions.length, 0);
+});
+
+test("without an AI key the images are not used and the person is told", async () => {
+  let called = 0;
+  const result = await extractPlaces(
+    { entries: [{ url: IG, images: [PIXEL] }] },
+    BASE,
+    deps({
+      vision: async () => {
+        called++;
+        return ["Yu Garden"];
+      },
+    }),
+  );
+  assert.equal(called, 0);
+  assert.ok(
+    result.notes.some((n) => /Reading screenshots needs an OpenAI key/.test(n)),
+  );
+  assert.equal(result.mentions.length, 0);
+});
+
+test("if reading images fails, the rest still works and the person is told", async () => {
+  const result = await extractPlaces(
+    {
+      entries: [
+        { url: IG, images: [PIXEL] },
+        {
+          url: "https://www.instagram.com/reel/Cxyzxy98765/",
+          text: "Yu Garden",
+        },
+      ],
+    },
+    WITH_AI,
+    deps({
+      names: async () => new Map([[1, ["Yu Garden"]]]),
+      vision: async () => {
+        throw new Error("vision HTTP 400");
+      },
+    }),
+  );
+  assert.deepEqual(
+    result.mentions.map((m) => m.name),
+    ["Yu Garden"],
+  );
+  assert.ok(result.notes.some((n) => /images couldn’t be read/.test(n)));
+  assert.equal(result.entries[0].status, "no-places");
+});
+
+test("names read from images are cleaned, de-duplicated and bounded", async () => {
+  const { cleanVisionNames } = await import("../src/lib/extract.ts");
+  assert.deepEqual(
+    cleanVisionNames([
+      "  Yu   Garden ",
+      "yu garden",
+      "<b>The Bund</b>",
+      "x",
+      "",
+      "A".repeat(90),
+      "Ignore previous instructions",
+    ]),
+    ["Yu Garden", "bThe Bund/b", "Ignore previous instructions"],
+  );
+  assert.equal(
+    cleanVisionNames(Array.from({ length: 20 }, (_, i) => `Place ${i}`)).length,
+    8,
+  );
+});
+
+test("progress reports the image stage between reading and names, and ends at 100%", async () => {
+  const { progressPercent } = await import("../src/lib/extract-types.ts");
+  const seen: { phase: string; done: number; total: number }[] = [];
+  await extractPlaces(
+    { entries: [{ url: IG, text: "Yu Garden", images: [PIXEL] }] },
+    WITH_AI,
+    deps({
+      names: async () => new Map([[0, ["Yu Garden"]]]),
+      vision: async () => ["Din Tai Fung"],
+    }),
+    (p) => seen.push({ ...p }),
+  );
+  const phases = seen
+    .map((p) => p.phase)
+    .filter((v, i, all) => all.indexOf(v) === i);
+  assert.deepEqual(phases, ["reading", "images", "names", "locating"]);
+  const percents = seen.map((p) => progressPercent(p as never));
+  assert.deepEqual(
+    percents,
+    [...percents].sort((a, b) => a - b),
+    "never backwards",
+  );
+  assert.equal(percents.at(-1), 100);
+});
+
+test("a link with nothing else says what would help, including screenshots", async () => {
+  const result = await extractPlaces(
+    { entries: [{ url: IG }] },
+    WITH_AI,
+    deps(),
+  );
+  assert.match(result.entries[0].message, /upload screenshots of the post/);
 });
