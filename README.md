@@ -29,6 +29,15 @@ reasons, the map and multi-day routing, and companion voting.
 - **Never empty-handed.** If a city search finds fewer than 10 places to eat, it
   automatically searches again out to 10 km and tells you it did. A map area you
   chose yourself is never widened.
+- **Social posts, honestly.** Each place has a "Social posts & search" panel:
+  links that open TikTok, Instagram and Xiaohongshu's own search for that place,
+  and links **visitors have shared** ("Seen on TikTok ×2"). There is no automatic
+  "trending" data: none of the three platforms offers a free, permitted source
+  for it. Shared links are checked to be a single real post on those sites
+  (everything else is rejected), carry no free text, are rate limited, capped per
+  place, can be reported (three different visitors hide a link), and expire after
+  90 days. We never verify that a post is about the place. Needs the Redis
+  settings in production; set `COMMUNITY_POSTS=0` to switch it off.
 - **Instant filters.** All places for a search are delivered once, so choosing a
   type filters the list and map in the browser with no new request.
 - **Search this area.** Move or zoom the map, then press "Search this area" (like

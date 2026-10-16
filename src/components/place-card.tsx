@@ -3,6 +3,7 @@ import { mapLinks } from "@/lib/maplinks";
 import { placeToStop } from "@/lib/plan";
 import type { Place } from "@/lib/types";
 import { AddToPlanButton } from "./add-to-plan";
+import { SocialBadges, SocialPanel } from "./social-panel";
 
 function hueFor(text: string): number {
   let hash = 0;
@@ -185,6 +186,7 @@ export function PlaceCard({
             <li>{place.distanceKm} km from centre</li>
           )}
         </ul>
+        <SocialBadges place={place} />
         <Reason place={place} />
         <AddToPlanButton stop={placeToStop(place)} destination={destination} />
         <details className="visit">
@@ -270,6 +272,7 @@ export function PlaceCard({
             </p>
           )}
         </details>
+        <SocialPanel place={place} city={destination ?? ""} />
       </div>
     </article>
   );

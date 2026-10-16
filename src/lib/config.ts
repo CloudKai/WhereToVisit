@@ -20,6 +20,8 @@ export type Config = {
   openaiModel: string;
   llmDailyCap: number;
   wikimediaContact?: string;
+  /** Visitors may share TikTok/Instagram/Xiaohongshu post links for places. */
+  communityPosts: boolean;
 };
 
 function clean(value: string | undefined): string | undefined {
@@ -46,5 +48,8 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): Config {
     openaiModel: clean(env.OPENAI_MODEL) ?? "gpt-5.4-mini",
     llmDailyCap: Number.isFinite(cap) && cap >= 0 ? cap : 150,
     wikimediaContact: clean(env.WIKIMEDIA_CONTACT),
+    communityPosts: !["0", "false", "off"].includes(
+      (env.COMMUNITY_POSTS ?? "").trim().toLowerCase(),
+    ),
   };
 }

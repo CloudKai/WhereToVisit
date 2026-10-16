@@ -70,6 +70,18 @@ export default function About() {
         see that area on its own terms.
       </p>
 
+      <h2>TikTok, Instagram and Xiaohongshu</h2>
+      <p>
+        None of these apps offers a free, permitted way for us to see what is
+        trending near a place, so this site does not claim to know. Instead each
+        place has buttons that open that app’s own search for it, and visitors
+        can share the link to a post about the place. Those show as “Seen on
+        TikTok” and similar. We only accept a link to a single post on those
+        sites, we don’t check that the post is about the place or that it is
+        popular, and any link can be reported. Treat them as a lead to follow,
+        not as a ranking.
+      </p>
+
       <h2>Photos</h2>
       <p>
         Photos come from Wikimedia Commons and always link to their file page
