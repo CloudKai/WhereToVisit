@@ -6,7 +6,6 @@ const destinations = [
   ["/", "Home"],
   ["/discover", "Discover"],
   ["/import", "Import"],
-  ["/trips", "Trips"],
 ] as const;
 
 export function PrimaryNavigation() {

@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { CatalogueResult } from "@/shared/contracts";
 import { BranchPhoto } from "./branch-photo";
@@ -81,8 +80,8 @@ export function CatalogueList({
                 {story?.recommendation?.mentionedExperience ??
                   "No sourced visit experience yet. Inspect branch facts before choosing."}
               </p>
-              <div className="actions branch-actions">
-                {onSelect && (
+              {onSelect && (
+                <div className="actions branch-actions">
                   <button
                     className="secondary-button"
                     type="button"
@@ -92,15 +91,8 @@ export function CatalogueList({
                   >
                     Inspect branch
                   </button>
-                )}
-                <Link
-                  className="button"
-                  href={`/trips?placeId=${encodeURIComponent(place.id)}`}
-                  aria-label={`Review Save ${place.branch ?? place.displayName} to a Trip`}
-                >
-                  Review Save <span aria-hidden="true">↗</span>
-                </Link>
-              </div>
+                </div>
+              )}
               {story && (
                 <p className="branch-attribution">
                   {story.recommendation?.summary}{" "}

@@ -44,7 +44,7 @@ export function SocialReferences({
         );
       if (retained.current && value.references.length === 0)
         setStatus(
-          "A temporary social draft was removed or expired. Saved Trips and article imports are separate.",
+          "A temporary social draft was removed or expired. Article imports are separate.",
         );
       if (initialLoad.current) {
         if (!entryDecided.current) setEntryOpen(value.references.length === 0);
@@ -216,8 +216,7 @@ export function SocialReferences({
     <div className="social-references" aria-busy={busy}>
       <p className="notice reference-privacy">
         Private to this browser, including on a shared device. Anyone using this
-        browser can see these drafts after sign-in, sign-out or account
-        switching. Nothing transfers to an account or Trip.
+        browser can see these drafts.
       </p>
       <p className="reference-lifetime">
         Up to 20 drafts · 24 hours from creation · reads never extend expiry.

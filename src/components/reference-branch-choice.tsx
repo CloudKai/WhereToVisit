@@ -106,7 +106,7 @@ export function ReferenceBranchChoice({
       )}
       <p>
         This is your judgment, not an extracted or verified match, creator
-        endorsement or social recommendation. It does not save to a Trip.
+        endorsement or social recommendation.
       </p>
       {!editing ? (
         <button type="button" onClick={() => void open()}>

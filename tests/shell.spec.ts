@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("visitor can navigate discovery, import and trips", async ({
+test("visitor can navigate discovery and import without Trips", async ({
   page,
 }, testInfo) => {
   for (const width of [375, 1280]) {
@@ -11,10 +11,12 @@ test("visitor can navigate discovery, import and trips", async ({
       fullPage: true,
     });
     const navigation = page.getByRole("navigation", { name: "Primary" });
+    await expect(
+      navigation.getByRole("link", { name: "Trips", exact: true }),
+    ).toHaveCount(0);
     for (const [name, path, heading] of [
       ["Discover", "/discover", "Discover Shanghai"],
       ["Import", "/import", "Import an article"],
-      ["Trips", "/trips", "Your Trips"],
     ]) {
       const link = navigation.getByRole("link", { name, exact: true });
       await expect(link).toBeVisible();

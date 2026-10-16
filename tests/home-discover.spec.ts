@@ -45,7 +45,6 @@ test("Home gives truthful entries and keyboard navigation marks the current page
     for (const [name, href] of [
       ["Discover", "/discover"],
       ["Import", "/import"],
-      ["Trips", "/trips"],
       ["Home", "/"],
     ]) {
       const link = page

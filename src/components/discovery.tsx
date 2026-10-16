@@ -485,8 +485,7 @@ export function Discovery({
               Reviewed order keeps up to {limit} places per category after
               filters, with fewer where coverage is small. This is not a
               popularity or rating ranking. Surprise me picks one displayed
-              candidate; repeats are possible. Inspecting never saves a Place or
-              changes a Trip.
+              candidate; repeats are possible.
             </p>
             <p className="filter-note">
               Known price bands use sourced CNY amounts. Unknown prices do not

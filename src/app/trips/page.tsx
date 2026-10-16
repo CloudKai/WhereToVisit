@@ -1,22 +1,7 @@
-import { TripDashboard } from "@/components/trips";
-export default async function Trips({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    placeId?: string;
-    importId?: string;
-    intentId?: string;
-  }>;
-}) {
-  const params = await searchParams;
-  return (
-    <section className="page-section trip-page">
-      <h1>Your Trips</h1>
-      <TripDashboard
-        placeId={params.placeId}
-        importId={params.importId}
-        pendingIntentId={params.intentId}
-      />
-    </section>
-  );
+import { notFound } from "next/navigation";
+// Private Trips (and organiser sign-in/sign-up) are switched off for now.
+// The implementation in src/components/trips.tsx and src/server/ is kept so
+// the feature can be re-enabled by restoring this page.
+export default function Trips() {
+  notFound();
 }

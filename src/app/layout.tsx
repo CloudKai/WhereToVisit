@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "WhereToVisit — Inspiration to a day out",
   description:
-    "Discover Shanghai food and cafés, bring your inspiration, and choose places together.",
+    "Discover Shanghai food and cafés, understand why they are recommended, and bring your inspiration.",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
