@@ -1,5 +1,7 @@
 import { mapLinks } from "@/lib/maplinks";
+import { placeToStop } from "@/lib/plan";
 import type { Place } from "@/lib/types";
+import { AddToPlanButton } from "./add-to-plan";
 
 function hueFor(text: string): number {
   let hash = 0;
@@ -131,10 +133,16 @@ function Reason({ place }: { place: Place }) {
   );
 }
 
-export function PlaceCard({ place }: { place: Place }) {
+export function PlaceCard({
+  place,
+  destination,
+}: {
+  place: Place;
+  destination?: string;
+}) {
   const hasPoint = place.lat !== undefined && place.lon !== undefined;
   return (
-    <article className="card">
+    <article className="card" id={`place-${place.id}`} tabIndex={-1}>
       <Media place={place} />
       <div className="card-body">
         <h3>{place.name}</h3>
@@ -153,6 +161,7 @@ export function PlaceCard({ place }: { place: Place }) {
           )}
         </ul>
         <Reason place={place} />
+        <AddToPlanButton stop={placeToStop(place)} destination={destination} />
         <details className="visit">
           <summary>Visit details &amp; sources</summary>
           <dl>

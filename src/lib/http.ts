@@ -50,6 +50,43 @@ export async function getJson<T>(
   }
 }
 
+/** POST JSON with a hard timeout; never cached. */
+export async function postJson<T>(
+  service: string,
+  url: string,
+  body: unknown,
+  options: { headers?: Record<string, string>; timeoutMs?: number } = {},
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        accept: "application/json, application/geo+json",
+        "content-type": "application/json",
+        ...options.headers,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 15000),
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "request failed";
+    throw new UpstreamError(service, reason);
+  }
+  if (!response.ok) {
+    throw new UpstreamError(
+      service,
+      `HTTP ${response.status}`,
+      response.status,
+    );
+  }
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new UpstreamError(service, "invalid JSON response");
+  }
+}
+
 /** Fixed-window counters used for rate limits and daily caps (per process). */
 export class WindowCounter {
   private readonly windowMs: number;

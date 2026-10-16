@@ -59,6 +59,17 @@ export default function About() {
         have no source text.
       </p>
 
+      <h2>Maps and your day plan</h2>
+      <p>
+        Add places to “Your day” to see them on a map and in order. Travel times
+        follow real roads and paths when the routing service is available;
+        otherwise they are labelled straight-line estimates. They don’t include
+        traffic, waiting or public transit, and opening hours are not checked
+        against your schedule — each leg has links that open live directions in
+        your own maps app. Your plan stays in your browser and in the link you
+        share; nothing is stored on our servers.
+      </p>
+
       <h2>Practical details</h2>
       <p>
         Addresses, hours and phone numbers come from OpenStreetMap or Wikivoyage

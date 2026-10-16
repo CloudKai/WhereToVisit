@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PlaceCard } from "@/components/place-card";
+import { PlacesMap } from "@/components/places-map";
+import type { MapMarker } from "@/components/map";
 import { SearchBox } from "@/components/search-box";
 import { ConfigError } from "@/lib/config";
 import {
@@ -103,6 +105,15 @@ export default async function Explore({
 
   const picks = applyFilter(result.editorPicks, filter);
   const nearby = applyFilter(result.nearby, filter);
+  const markers: MapMarker[] = [...picks, ...nearby]
+    .filter((p) => p.lat !== undefined && p.lon !== undefined)
+    .map((p) => ({
+      id: p.id,
+      lat: p.lat as number,
+      lon: p.lon as number,
+      label: p.name,
+      kind: p.tier,
+    }));
   const place = destination.country
     ? `${destination.name}, ${destination.country}`
     : destination.name;
@@ -137,6 +148,8 @@ export default async function Explore({
         </p>
       ))}
 
+      {markers.length > 0 && <PlacesMap markers={markers} />}
+
       {picks.length > 0 && (
         <section aria-labelledby="picks-heading">
           <h2 id="picks-heading">Recommended by travel editors</h2>
@@ -147,7 +160,7 @@ export default async function Explore({
           </p>
           <div className="grid">
             {picks.map((p) => (
-              <PlaceCard key={p.id} place={p} />
+              <PlaceCard key={p.id} place={p} destination={destination.name} />
             ))}
           </div>
         </section>
@@ -167,7 +180,11 @@ export default async function Explore({
             </p>
             <div className="grid">
               {nearby.map((p) => (
-                <PlaceCard key={p.id} place={p} />
+                <PlaceCard
+                  key={p.id}
+                  place={p}
+                  destination={destination.name}
+                />
               ))}
             </div>
           </details>

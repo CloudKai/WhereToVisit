@@ -10,6 +10,9 @@ export class ConfigError extends Error {
 export type Config = {
   geoapifyKey?: string;
   orsKey?: string;
+  /** Without trailing slash, e.g. https://api.heigit.org/openrouteservice */
+  orsBaseUrl: string;
+  orsDailyCap: number;
   openaiKey?: string;
   openaiModel: string;
   llmDailyCap: number;
@@ -24,9 +27,15 @@ function clean(value: string | undefined): string | undefined {
 /** Reads server-side settings. Never import this from a client component. */
 export function getConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const cap = Number.parseInt(env.LLM_DAILY_CAP ?? "", 10);
+  const orsCap = Number.parseInt(env.ORS_DAILY_CAP ?? "", 10);
   return {
     geoapifyKey: clean(env.GEOAPIFY_API_KEY),
     orsKey: clean(env.ORS_API_KEY),
+    orsBaseUrl: (
+      clean(env.ORS_BASE_URL) ?? "https://api.heigit.org/openrouteservice"
+    ).replace(/\/+$/, ""),
+    // The free plan allows ~2,000 directions/day; stay well below it.
+    orsDailyCap: Number.isFinite(orsCap) && orsCap >= 0 ? orsCap : 1200,
     openaiKey: clean(env.OPENAI_API_KEY),
     openaiModel: clean(env.OPENAI_MODEL) ?? "gpt-5.4-mini",
     llmDailyCap: Number.isFinite(cap) && cap >= 0 ? cap : 150,
