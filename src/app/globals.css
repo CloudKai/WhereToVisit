@@ -1087,3 +1087,128 @@ summary {
 .empty-plan {
   max-width: 640px;
 }
+
+/* ---------- Voting ---------- */
+.field-label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.share-row.actions {
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.name-form {
+  max-width: 560px;
+  margin: 8px 0 20px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.name-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.text-button {
+  font: inherit;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-dark);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.vote-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.vote {
+  flex: 1 1 90px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+.vote:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+.vote:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.vote-must.chosen {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.vote-interested.chosen {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #fff;
+}
+.vote-skip.chosen {
+  background: #6b6258;
+  border-color: #6b6258;
+  color: #fff;
+}
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.t-must {
+  color: var(--accent-dark);
+}
+.t-interested {
+  color: #8a6212;
+}
+.t-skip {
+  color: var(--muted);
+}
+.voters {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+}
+.ranking {
+  margin: 12px 0 0;
+  padding-left: 22px;
+}
+.ranking li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ranking li::marker {
+  font-weight: 700;
+  color: var(--gold);
+}
+.ranking li {
+  display: list-item;
+}
+.ranking li span {
+  margin-right: 10px;
+}
+.vote-share {
+  margin-top: 24px;
+}

@@ -13,6 +13,9 @@ export type Config = {
   /** Without trailing slash, e.g. https://api.heigit.org/openrouteservice */
   orsBaseUrl: string;
   orsDailyCap: number;
+  /** Upstash Redis REST endpoint; Vercel's integration sets the KV_* names. */
+  redisUrl?: string;
+  redisToken?: string;
   openaiKey?: string;
   openaiModel: string;
   llmDailyCap: number;
@@ -36,6 +39,9 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ).replace(/\/+$/, ""),
     // The free plan allows ~2,000 directions/day; stay well below it.
     orsDailyCap: Number.isFinite(orsCap) && orsCap >= 0 ? orsCap : 1200,
+    redisUrl: clean(env.UPSTASH_REDIS_REST_URL) ?? clean(env.KV_REST_API_URL),
+    redisToken:
+      clean(env.UPSTASH_REDIS_REST_TOKEN) ?? clean(env.KV_REST_API_TOKEN),
     openaiKey: clean(env.OPENAI_API_KEY),
     openaiModel: clean(env.OPENAI_MODEL) ?? "gpt-5.4-mini",
     llmDailyCap: Number.isFinite(cap) && cap >= 0 ? cap : 150,

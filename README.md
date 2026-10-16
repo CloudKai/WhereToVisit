@@ -4,8 +4,8 @@ Search any destination and see recommended cafés and restaurants, each with the
 reason it is worth a visit, where that reason comes from, and the practical
 details to check before you go.
 
-**Status:** steps 1 and 2 of 3 are built (discovery with recommendation reasons,
-then the map and day plan). Companion voting is step 3.
+**Status:** all three planned steps are built: discovery with recommendation
+reasons, the map and day plan, and companion voting.
 
 ## What it does today
 
@@ -37,6 +37,13 @@ then the map and day plan). Companion voting is step 3.
 - **Shareable, not stored.** The plan lives in your browser tab and in the page
   link (`/plan#p=…`). Nothing is saved on a server.
 
+- **Vote with friends.** On the day plan, "Create voting link" gives a link for
+  companions. They enter a display name (no sign-up) and vote Must go /
+  Interested / Skip on each stop, see live totals and who voted what, and the
+  group ranking (2 × Must go + 1 × Interested − 1 × Skip). The organiser can
+  update the stops, close voting or delete the room, using a private organiser
+  link kept in their browser. Rooms expire after 30 days of inactivity.
+
 There is no account, sign-in, saving or private Trip. See
 [/about](src/app/about/page.tsx) for the user-facing explanation.
 
@@ -46,6 +53,9 @@ There is no account, sign-in, saving or private Trip. See
 - Travel times come from OpenRouteService when `ORS_API_KEY` is set and the
   service answers; otherwise they are straight-line estimates and say so.
   They exclude traffic, waiting and public transit (use the Directions links).
+- Voting links are unguessable but not private: anyone holding one can vote and
+  see names, and display names are not verified. The organiser can close or
+  delete the room.
 - Opening hours are shown as mapped but are **not** checked against the
   schedule.
 - Where Wikivoyage has no listing for an area, only the "nearby" list appears.
@@ -55,6 +65,23 @@ There is no account, sign-in, saving or private Trip. See
 - Free API tiers are rate limited. Results are cached (24 h for upstream data,
   6 h per destination in memory), and the app degrades instead of failing when
   one source is down.
+
+## Deploying (Vercel or AWS)
+
+Everything except voting works on any Node host with no database. Voting needs
+shared storage, because votes from several phones must land in one place. The app
+uses a free [Upstash Redis](https://upstash.com) database over plain HTTP, so it
+works the same on Vercel, AWS (Amplify, ECS, Lambda, EC2) or anywhere else.
+
+1. Create the database (on Vercel: Storage → Upstash Redis, which adds the
+   variables for you).
+2. Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (or Vercel's
+   `KV_REST_API_URL` / `KV_REST_API_TOKEN`) plus your API keys on the host.
+3. Without these in production, voting is disabled with a clear message rather
+   than silently losing votes. Check the Upstash free-tier limits for your use.
+
+Rate limits and expiry live in Redis, so they hold across serverless instances.
+Other in-memory caches (search results, AI condensing) are per instance.
 
 ## Run it
 
@@ -88,7 +115,10 @@ src/lib/maplinks.ts    keyless deep links to maps apps (places and directions)
 src/lib/routing.ts     route ordering (exact solver), estimates, schedule maths
 src/lib/ors.ts         OpenRouteService matrix/directions + graceful fallback
 src/lib/plan.ts        day-plan state and shareable-link encoding
-src/app/               pages (/, /explore, /plan, /about), /api/suggest, /api/route
+src/lib/rooms.ts       voting rooms: create, vote, owner actions, rate limits
+src/lib/room-types.ts  vote types, tallies, name rules (shared with the browser)
+src/lib/store.ts       storage interface: Upstash Redis (REST) and in-memory
+src/app/               pages (/, /explore, /plan, /r/[id], /about) and API routes
 src/components/        search box, place card, map, day-plan screen
 tests/                 node:test unit tests
 ```

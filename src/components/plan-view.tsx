@@ -22,6 +22,7 @@ import {
 } from "@/lib/routing";
 import { type MapMarker, MapCanvas } from "./map";
 import { usePlan } from "./plan-provider";
+import { ShareRoom } from "./share-room";
 
 const MODE_LABEL: Record<Mode, string> = {
   walk: "Walk",
@@ -428,6 +429,8 @@ export function PlanView() {
               {problem}
             </p>
           )}
+
+          <ShareRoom />
 
           <section className="share" aria-labelledby="share-heading">
             <h2 id="share-heading">Share this day</h2>

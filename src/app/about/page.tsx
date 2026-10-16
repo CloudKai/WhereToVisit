@@ -70,6 +70,15 @@ export default function About() {
         share; nothing is stored on our servers.
       </p>
 
+      <h2>Voting with friends</h2>
+      <p>
+        You can turn your day into a voting link. Friends choose a display name
+        — there are no accounts — and vote Must go, Interested or Skip on each
+        place. Everyone with the link sees the votes and the names entered, so
+        share it only with people you trust. The organiser can close voting or
+        delete the room, and rooms disappear after 30 days of inactivity.
+      </p>
+
       <h2>Practical details</h2>
       <p>
         Addresses, hours and phone numbers come from OpenStreetMap or Wikivoyage
