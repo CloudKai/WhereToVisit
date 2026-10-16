@@ -199,3 +199,88 @@ test("cities mapped as a state (Tokyo, Shanghai) are searchable and rank sensibl
     ],
   );
 });
+
+// ---------- backup geocoder & failure reasons ----------
+
+test("backup geocoder keeps cities and districts, drops countries and shops", async () => {
+  const { normalizeNominatim } = await import("../src/lib/nominatim.ts");
+  const result = normalizeNominatim([
+    {
+      lat: "35",
+      lon: "103",
+      name: "China",
+      display_name: "China",
+      addresstype: "country",
+    },
+    {
+      lat: "31.2304",
+      lon: "121.4737",
+      name: "Shanghai",
+      display_name: "Shanghai, China",
+      addresstype: "state",
+      address: { country: "China" },
+    },
+    {
+      lat: "31.2",
+      lon: "121.4",
+      name: "Jing'an",
+      display_name: "Jing'an, Shanghai, China",
+      addresstype: "city_district",
+    },
+    {
+      lat: "40.7",
+      lon: "-74",
+      name: "Shanghai Cafe",
+      display_name: "Shanghai Cafe, New York",
+      addresstype: "amenity",
+    },
+    {
+      lat: "abc",
+      lon: "1",
+      name: "Bad",
+      display_name: "Bad",
+      addresstype: "city",
+    },
+    {
+      lat: "95",
+      lon: "1",
+      name: "Far",
+      display_name: "Far",
+      addresstype: "city",
+    },
+  ]);
+  assert.deepEqual(
+    result.map((r) => [r.name, r.radiusM, r.country]),
+    [
+      ["Jing'an", 2500, undefined],
+      ["Shanghai", 8000, "China"],
+    ],
+  );
+  assert.deepEqual(normalizeNominatim(null), []);
+  assert.deepEqual(normalizeNominatim({}), []);
+});
+
+test("upstream failures are classified for a helpful message", async () => {
+  const { failureReason, UpstreamError } = await import("../src/lib/http.ts");
+  assert.equal(
+    failureReason(new UpstreamError("Geoapify", "HTTP 401", 401)),
+    "key-rejected",
+  );
+  assert.equal(
+    failureReason(new UpstreamError("Geoapify", "HTTP 403", 403)),
+    "key-rejected",
+  );
+  assert.equal(
+    failureReason(new UpstreamError("Geoapify", "HTTP 429", 429)),
+    "quota",
+  );
+  assert.equal(
+    failureReason(new UpstreamError("Geoapify", "HTTP 500", 500)),
+    "unavailable",
+  );
+  assert.equal(
+    failureReason(new UpstreamError("Geoapify", "timeout")),
+    "unavailable",
+  );
+  assert.equal(failureReason(new Error("boom")), "unavailable");
+});

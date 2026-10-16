@@ -5,6 +5,7 @@ import { PlacesMap } from "@/components/places-map";
 import type { MapMarker } from "@/components/map";
 import { SearchBox } from "@/components/search-box";
 import { ConfigError } from "@/lib/config";
+import { failureReason } from "@/lib/http";
 import {
   AREA_OPTIONS,
   type CategoryFilter,
@@ -94,6 +95,31 @@ export default async function Explore({
     console.warn(
       `[explore] failed: ${error instanceof Error ? error.message : "error"}`,
     );
+    const reason = failureReason(error);
+    if (reason === "key-rejected" || reason === "quota") {
+      return (
+        <Problem
+          title={
+            reason === "key-rejected"
+              ? "The place-data key was rejected"
+              : "Today’s place-data limit has been reached"
+          }
+        >
+          <p>
+            {reason === "key-rejected" ? (
+              <>
+                Geoapify refused the key in <code>GEOAPIFY_API_KEY</code>. Check
+                that it is copied exactly (no quotes or spaces) and restart the
+                server. In development, open <code>/api/status</code> to test
+                it.
+              </>
+            ) : (
+              <>The free daily allowance is used up. Try again tomorrow.</>
+            )}
+          </p>
+        </Problem>
+      );
+    }
     return (
       <Problem title="We couldn’t load places right now">
         <p>

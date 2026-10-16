@@ -146,3 +146,14 @@ export class TtlCache<V> {
     this.entries.set(key, { value, expires: now + this.ttlMs });
   }
 }
+
+export type FailureReason = "key-rejected" | "quota" | "unavailable";
+
+/** Turns an upstream failure into a reason the interface can explain. */
+export function failureReason(error: unknown): FailureReason {
+  if (error instanceof UpstreamError) {
+    if (error.status === 401 || error.status === 403) return "key-rejected";
+    if (error.status === 429) return "quota";
+  }
+  return "unavailable";
+}

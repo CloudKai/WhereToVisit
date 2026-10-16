@@ -102,6 +102,16 @@ npm run dev                  # http://localhost:3000
 
 Keys are read on the server only and never sent to the browser.
 
+**Something not working?** In development, open
+[`/api/status`](http://localhost:3000/api/status). It tests each service
+(Geoapify, Wikivoyage, OpenRouteService, OpenAI, voting storage) and says which
+one is failing and why, for example "key was rejected". It never shows your keys
+and is disabled in production.
+
+If live suggestions fail, pressing Enter in the search box falls back to
+OpenStreetMap's free geocoder (one search per Enter, never while typing, as its
+usage policy requires), so any city can still be found.
+
 ```sh
 npm test         # unit tests for parsing, merging, routing, plan links (no network)
 npm run typecheck
