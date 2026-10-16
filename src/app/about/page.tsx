@@ -19,7 +19,8 @@ export default function About() {
       <h2>Where a recommendation comes from</h2>
       <ul>
         <li>
-          <strong>Travel editors.</strong> Cafés and restaurants listed in{" "}
+          <strong>Travel editors.</strong> Restaurants, cafés, shops, sights,
+          museums and parks listed in{" "}
           <a
             href="https://www.wikivoyage.org/"
             target="_blank"
@@ -57,6 +58,26 @@ export default function About() {
         “AI-condensed”, and the full original is always available. The AI never
         decides which places are recommended and never writes about places that
         have no source text.
+      </p>
+
+      <h2>Photos</h2>
+      <p>
+        Photos come from Wikimedia Commons and always link to their file page
+        for the photographer and licence. A place gets a photo of its own when
+        it has a Wikidata entry or Wikivoyage image. For landmarks, parks,
+        museums and malls we may also use a geotagged photo taken at that spot;
+        when it isn’t clearly of that place it is labelled “Photo taken nearby”.
+        Most shops and cafés have no free photo, so they show an icon instead of
+        a wrong picture.
+      </p>
+
+      <h2>Which sights and parks appear</h2>
+      <p>
+        Map data contains huge numbers of tiny sights and pocket parks. From the
+        map data we only list sights and parks with some sign of being known —
+        an encyclopedia entry, a website or a description — so the list isn’t
+        full of benches and statues. Editor recommendations are not filtered
+        this way.
       </p>
 
       <h2>Maps, routes and your trip</h2>

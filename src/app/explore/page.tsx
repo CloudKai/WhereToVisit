@@ -6,15 +6,15 @@ import type { MapMarker } from "@/components/map";
 import { SearchBox } from "@/components/search-box";
 import { ConfigError } from "@/lib/config";
 import { failureReason } from "@/lib/http";
+import { type CategoryFilter, FILTERS, matchesFilter } from "@/lib/categories";
 import {
   AREA_OPTIONS,
-  type CategoryFilter,
   exploreHref,
   nearestArea,
   parseDestination,
   parseFilter,
 } from "@/lib/destination";
-import { explore } from "@/lib/explore";
+import { capPerType, explore, HEADLINE_PER_TYPE } from "@/lib/explore";
 import type { Place } from "@/lib/types";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -27,21 +27,24 @@ export async function generateMetadata({
   const destination = parseDestination(await searchParams);
   return {
     title: destination
-      ? `Where to eat in ${destination.name} — WhereToVisit`
+      ? `Things to do and eat in ${destination.name} — WhereToVisit`
       : "Explore — WhereToVisit",
   };
 }
 
-const FILTERS: [CategoryFilter, string][] = [
-  ["all", "All"],
-  ["cafe", "Cafés"],
-  ["food", "Restaurants"],
-];
-
+/** "All" shows the top few of each type; choosing a type shows everything. */
 function applyFilter(places: Place[], filter: CategoryFilter): Place[] {
-  return filter === "all"
-    ? places
-    : places.filter((p) => p.category === filter);
+  const matching = places.filter((p) => matchesFilter(p.category, filter));
+  return filter === "all" ? capPerType(matching, HEADLINE_PER_TYPE) : matching;
+}
+
+function countFor(
+  result: { editorPicks: Place[]; nearby: Place[] },
+  filter: CategoryFilter,
+) {
+  return [...result.editorPicks, ...result.nearby].filter((p) =>
+    matchesFilter(p.category, filter),
+  ).length;
 }
 
 function Problem({
@@ -149,22 +152,25 @@ export default async function Explore({
   return (
     <div className="page-section">
       <header className="explore-head">
-        <p className="eyebrow">Eat &amp; drink in</p>
+        <p className="eyebrow">Places to eat, shop and see in</p>
         <h1>{place}</h1>
         <p className="lead">
           {result.editorPicks.length > 0
             ? `${result.editorPicks.length} places recommended by travel editors, plus ${result.nearby.length} more nearby.`
             : `${result.nearby.length} places found nearby.`}
+          {filter === "all" &&
+            ` Showing the top ${HEADLINE_PER_TYPE} of each type — choose a type to see more.`}
         </p>
         <nav className="filters" aria-label="Filter by type">
-          {FILTERS.map(([value, label]) => (
+          {FILTERS.map(({ id, label }) => (
             <Link
-              key={value}
-              href={exploreHref(destination, value)}
-              aria-current={filter === value ? "true" : undefined}
-              className={filter === value ? "chip active" : "chip"}
+              key={id}
+              href={exploreHref(destination, id)}
+              aria-current={filter === id ? "true" : undefined}
+              className={filter === id ? "chip active" : "chip"}
             >
               {label}
+              <span className="chip-count">{countFor(result, id)}</span>
             </Link>
           ))}
         </nav>

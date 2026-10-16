@@ -1,3 +1,4 @@
+import { CATEGORY_INFO } from "./categories.ts";
 import { haversineKm } from "./geo.ts";
 import { namesMatch, slugify, truncateText } from "./text.ts";
 import type {
@@ -19,18 +20,27 @@ export function commonsPhoto(file: string): Photo {
     url: `https://commons.wikimedia.org/wiki/Special:FilePath/${encoded}?width=720`,
     pageUrl: `https://commons.wikimedia.org/wiki/File:${encoded}`,
     credit: "Wikimedia Commons",
+    kind: "place",
   };
 }
 
 /** Practical-facts line used when a place has no description at all. */
 export function factsLine(raw: RawPlace, areaName: string): string {
-  const kind = raw.category === "cafe" ? "Café" : "Restaurant";
-  const cuisine =
-    raw.cuisines.length > 0
-      ? ` serving ${raw.cuisines.map((c) => c.toLowerCase()).join(", ")}`
-      : "";
+  const info = CATEGORY_INFO[raw.category];
+  const isFood = raw.category === "cafe" || raw.category === "food";
+  let head: string;
+  if (isFood) {
+    const cuisine =
+      raw.cuisines.length > 0
+        ? ` serving ${raw.cuisines.map((c) => c.toLowerCase()).join(", ")}`
+        : "";
+    head = `${info.label}${cuisine} near ${areaName}.`;
+  } else {
+    const kind = raw.cuisines.length > 0 ? raw.cuisines[0] : info.label;
+    head = `${kind} near ${areaName}.`;
+  }
   const extras = raw.facts.length > 0 ? ` ${raw.facts.join(" · ")}.` : "";
-  return `${kind}${cuisine} near ${areaName}.${extras}`;
+  return `${head}${extras}`;
 }
 
 export function buildReason(raw: RawPlace, areaName: string): Reason {
@@ -122,6 +132,7 @@ function toPlace(
     website: primary.website ?? osm?.website,
     reason: buildReason(reasonSource, destination.name),
     photo: photoFile ? commonsPhoto(photoFile) : undefined,
+    wikidata: primary.wikidata ?? osm?.wikidata,
     sources: uniqueSources([primary.source, ...(osm ? [osm.source] : [])]),
     tier,
     score,

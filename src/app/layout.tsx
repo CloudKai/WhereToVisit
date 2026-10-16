@@ -5,9 +5,9 @@ import { PlanProvider } from "@/components/plan-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WhereToVisit — cafés and tables worth travelling for",
+  title: "WhereToVisit — places worth travelling for",
   description:
-    "Search any destination and see recommended cafés and restaurants, with the reason each one is worth a visit and where the recommendation comes from.",
+    "Search any city and see recommended restaurants, cafés, shopping, sights, museums and parks, with the reason each is worth a visit and where the recommendation comes from.",
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

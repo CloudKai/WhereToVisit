@@ -1,5 +1,6 @@
 import { isLat, isLon } from "./geo.ts";
-import type { Category, Destination } from "./types.ts";
+import { type CategoryFilter, parseCategoryFilter } from "./categories.ts";
+import type { Destination } from "./types.ts";
 
 export const MIN_RADIUS_M = 500;
 export const MAX_RADIUS_M = 10000;
@@ -61,13 +62,12 @@ export function nearestArea(radiusM: number): (typeof AREA_OPTIONS)[number] {
   );
 }
 
-export type CategoryFilter = "all" | Category;
+export type { CategoryFilter } from "./categories.ts";
 
 export function parseFilter(
   value: string | string[] | undefined,
 ): CategoryFilter {
-  const v = first(value);
-  return v === "cafe" || v === "food" ? v : "all";
+  return parseCategoryFilter(value);
 }
 
 export function exploreHref(

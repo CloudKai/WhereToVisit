@@ -1,7 +1,7 @@
 # WhereToVisit
 
-Search any destination and see recommended cafés and restaurants, each with the
-reason it is worth a visit, where that reason comes from, and the practical
+Search any destination and see recommended restaurants, cafés, malls and
+shopping, attractions, museums and parks, each with the reason it is worth a visit, where that reason comes from, and the practical
 details to check before you go.
 
 **Status:** all three planned steps are built: discovery with recommendation
@@ -22,6 +22,14 @@ reasons, the map and multi-day routing, and companion voting.
   shortened to one line. The model may only use the source text, output that
   adds a number or name is rejected, lines are tagged "AI-condensed", and the
   full note is one click away. The AI never chooses what is recommended.
+- **Filters for every kind of place.** All · Food & drink · Cafés · Restaurants ·
+  Malls & shopping · Attractions · Museums & culture · Parks & nature, each with a
+  count. "All" shows the top 5 of each type; choose a type to see more. Editor
+  picks come from Wikivoyage's Eat, Drink, See, Do and Buy listings.
+- **Photos where a trustworthy free one exists.** A place's own Wikidata /
+  Wikivoyage image, or (for sights, parks, museums and malls) a Wikimedia Commons
+  photo geotagged at the spot, labelled "Photo taken nearby" when it isn't clearly
+  that place. Shops and cafés mostly have no free photo and show an icon.
 - **Visit details:** address, hours (as mapped), phone, website, and links that
   open the place in Google Maps, Apple Maps, Amap or OpenStreetMap.
 
@@ -69,6 +77,12 @@ There is no account, sign-in, saving or private Trip. See
 - Hours/addresses are community-mapped and can be wrong or missing.
 - Photos appear only where Wikivoyage or OpenStreetMap link a Wikimedia Commons
   image; other cards use a coloured placeholder.
+- A new destination makes one Geoapify request per type (six), plus Wikivoyage,
+  Wikidata and Commons lookups for photos. Results are cached for 24 hours, so
+  repeat visits are free, but a free key allows only a limited number of new
+  destinations per day.
+- Sights and parks from map data are only listed when they show some sign of
+  being known (an encyclopedia entry, website or description), to avoid clutter.
 - Free API tiers are rate limited. Results are cached (24 h for upstream data,
   6 h per destination in memory), and the app degrades instead of failing when
   one source is down.

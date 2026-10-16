@@ -1,3 +1,4 @@
+import { CATEGORIES, CATEGORY_INFO } from "./categories.ts";
 import { isLat, isLon } from "./geo.ts";
 import { getJson } from "./http.ts";
 import {
@@ -72,9 +73,54 @@ function parseCuisines(...values: (string | undefined)[]): string[] {
   return [...seen].slice(0, 3);
 }
 
+/** The most specific entry in `found` that belongs to this category, if any. */
+function groupMatches(category: Category, found: string[]): string | undefined {
+  let best: string | undefined;
+  for (const group of CATEGORY_INFO[category].geoapify) {
+    for (const entry of found) {
+      const belongs = entry === group || entry.startsWith(`${group}.`);
+      if (belongs && (!best || entry.length > best.length)) best = entry;
+    }
+  }
+  return best;
+}
+
+/** Our category for a Geoapify feature; `hint` wins when it fits. */
+export function categoryOf(found: string[], hint?: Category): Category {
+  if (hint && groupMatches(hint, found)) return hint;
+  return CATEGORIES.find((c) => groupMatches(c, found)) ?? hint ?? "food";
+}
+
+/** "tourism.sights.place_of_worship" -> "Place of worship" (empty for the plain group). */
+export function subtypeLabel(
+  found: string[],
+  category: Category,
+): string | undefined {
+  const hit = groupMatches(category, found);
+  if (!hit) return undefined;
+  const group = CATEGORY_INFO[category].geoapify.find(
+    (g) => hit === g || hit.startsWith(`${g}.`),
+  );
+  const rest = group ? hit.slice(group.length + 1) : "";
+  const last = rest.split(".").pop();
+  return last && last !== "yes" ? humanize(last) : undefined;
+}
+
+/** Some sign that a sight or park is a real, known place rather than map clutter. */
+export function isNotable(place: RawPlace): boolean {
+  return Boolean(
+    place.wikidata ||
+    place.flags.wikipedia ||
+    place.website ||
+    place.description ||
+    place.photoFile,
+  );
+}
+
 /** Converts one Geoapify Places feature to a RawPlace, or null if unusable. */
 export function normalizePlaceFeature(
   feature: GeoapifyFeature,
+  hint?: Category,
 ): RawPlace | null {
   const p = feature.properties;
   if (!p) return null;
@@ -93,13 +139,16 @@ export function normalizePlaceFeature(
   }
 
   const categories = p.categories ?? [];
-  const category: Category = categories.some((c) =>
-    c.startsWith("catering.cafe"),
-  )
-    ? "cafe"
-    : "food";
+  const category = categoryOf(categories, hint);
 
-  const cuisines = parseCuisines(p.catering?.cuisine, tags.cuisine);
+  // For food these are cuisines; for everything else, the kind of place.
+  const kind = subtypeLabel(categories, category);
+  const cuisines =
+    category === "cafe" || category === "food"
+      ? parseCuisines(p.catering?.cuisine, tags.cuisine)
+      : kind
+        ? [kind]
+        : [];
   const facts: string[] = [];
   if (isYes(tags.outdoor_seating)) facts.push("Outdoor seating");
   if (["wlan", "wifi", "yes"].includes(tags.internet_access ?? "")) {
@@ -157,18 +206,18 @@ export function normalizePlaceFeature(
   };
 }
 
-async function fetchCategory(
+async function fetchGroup(
   destination: Destination,
   apiKey: string,
-  category: string,
-  limit: number,
+  category: Category,
 ): Promise<RawPlace[]> {
+  const info = CATEGORY_INFO[category];
   const url = new URL(`${BASE}/v2/places`);
   url.search = new URLSearchParams({
-    categories: category,
+    categories: info.geoapify.join(","),
     filter: `circle:${destination.lon},${destination.lat},${destination.radiusM}`,
     bias: `proximity:${destination.lon},${destination.lat}`,
-    limit: String(limit),
+    limit: String(info.limit),
     lang: "en",
     apiKey,
   }).toString();
@@ -177,22 +226,45 @@ async function fetchCategory(
   });
   const places: RawPlace[] = [];
   for (const feature of data.features ?? []) {
-    const place = normalizePlaceFeature(feature);
-    if (place) places.push(place);
+    const place = normalizePlaceFeature(feature, category);
+    if (!place || place.category !== category) continue;
+    if (info.notableOnly && !isNotable(place)) continue;
+    places.push(place);
   }
   return places;
 }
 
-/** Cafés and restaurants around the destination from OpenStreetMap data. */
+/**
+ * Places around the destination from OpenStreetMap data, one request per
+ * category. A category that fails is skipped (and logged) so one bad request
+ * cannot hide everything else; only if all fail does this throw.
+ */
 export async function fetchOsmPlaces(
   destination: Destination,
   apiKey: string,
+  categories: Category[] = CATEGORIES,
 ): Promise<RawPlace[]> {
-  const [cafes, restaurants] = await Promise.all([
-    fetchCategory(destination, apiKey, "catering.cafe", 60),
-    fetchCategory(destination, apiKey, "catering.restaurant", 60),
-  ]);
-  return [...cafes, ...restaurants];
+  const settled = await Promise.allSettled(
+    categories.map((category) => fetchGroup(destination, apiKey, category)),
+  );
+  const places: RawPlace[] = [];
+  let firstFailure: unknown;
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      places.push(...result.value);
+    } else {
+      firstFailure ??= result.reason;
+      console.warn(
+        `[geoapify] ${categories[index]} request failed: ${
+          result.reason instanceof Error ? result.reason.message : "error"
+        }`,
+      );
+    }
+  });
+  if (settled.every((r) => r.status === "rejected") && firstFailure) {
+    throw firstFailure;
+  }
+  return places;
 }
 
 const RADIUS_BY_TYPE: Record<string, number> = {

@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CATEGORY_INFO } from "@/lib/categories";
 import { type Day, encodePlan, stopCount } from "@/lib/plan";
 import {
   ApiError,
@@ -350,7 +351,7 @@ export function RoomView({ id }: { id: string }) {
                         <div className="stop-main">
                           <h3>{stop.name}</h3>
                           <p className="hint">
-                            {stop.category === "cafe" ? "Café" : "Restaurant"}
+                            {CATEGORY_INFO[stop.category].label}
                             {stop.address ? ` · ${stop.address}` : ""}
                           </p>
                           <div

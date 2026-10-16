@@ -1,3 +1,4 @@
+import { CATEGORY_INFO, categoryFromToken } from "./categories.ts";
 import { isLat, isLon } from "./geo.ts";
 import type { Mode } from "./routing.ts";
 import type { Category, Place } from "./types.ts";
@@ -44,7 +45,7 @@ export function newDay(): Day {
 export const EMPTY_PLAN: Plan = { days: [newDay()] };
 
 export function defaultDwell(category: Category): number {
-  return category === "cafe" ? 45 : 75;
+  return CATEGORY_INFO[category].dwell;
 }
 
 export function stopId(lat: number, lon: number): string {
@@ -275,7 +276,7 @@ function fromBase64Url(token: string): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
-type PackedStop = [string, number, number, "c" | "f", number, string?, string?];
+type PackedStop = [string, number, number, string, number, string?, string?];
 type PackedDay = [number, "w" | "b" | "d", PackedStop[]];
 
 const MODE_CODE: Record<Mode, PackedDay[1]> = {
@@ -290,7 +291,7 @@ function pack(stop: Stop): PackedStop {
     stop.name,
     Number(stop.lat.toFixed(5)),
     Number(stop.lon.toFixed(5)),
-    stop.category === "cafe" ? "c" : "f",
+    CATEGORY_INFO[stop.category].token,
     stop.dwell,
     stop.address,
     stop.hours,
@@ -314,8 +315,8 @@ function unpackStop(item: unknown): Stop | null {
   if (!cleanName) return null;
   if (typeof lat !== "number" || typeof lon !== "number") return null;
   if (!isLat(lat) || !isLon(lon)) return null;
-  if (cat !== "c" && cat !== "f") return null;
-  const category: Category = cat === "c" ? "cafe" : "food";
+  const category = categoryFromToken(cat);
+  if (!category) return null;
   const cleanAddress = clip(address, 160);
   const cleanHours = clip(hours, 120);
   return {

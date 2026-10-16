@@ -1,4 +1,5 @@
-export type Category = "cafe" | "food";
+export type Category =
+  "cafe" | "food" | "shopping" | "attraction" | "museum" | "park";
 
 export type Destination = {
   name: string;
@@ -20,6 +21,11 @@ export type Photo = {
   url: string;
   pageUrl: string;
   credit: string;
+  /**
+   * "place": tied to this place (its own Wikidata/Wikivoyage image).
+   * "nearby": a Commons photo taken at this spot; shown with a clear label.
+   */
+  kind?: "place" | "nearby";
 };
 
 /**
@@ -55,6 +61,8 @@ export type Place = {
   website?: string;
   reason: Reason;
   photo?: Photo;
+  /** Wikidata item, used to look up a photo. */
+  wikidata?: string;
   sources: Source[];
   /** "editor" places have a travel-editor recommendation; "nearby" do not. */
   tier: "editor" | "nearby";

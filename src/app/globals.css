@@ -1357,3 +1357,15 @@ summary {
   color: var(--muted);
   margin-right: 4px;
 }
+
+.chip-count {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 8%);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.chip.active .chip-count {
+  background: rgb(255 255 255 / 25%);
+}
