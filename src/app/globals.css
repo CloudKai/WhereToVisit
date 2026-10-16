@@ -1411,3 +1411,11 @@ summary {
   gap: 8px 16px;
   margin-top: 8px;
 }
+
+.show-more {
+  margin: 28px 0 0;
+  text-align: center;
+}
+.nearby h2 {
+  margin-top: 36px;
+}

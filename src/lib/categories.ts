@@ -28,7 +28,7 @@ export const CATEGORY_INFO: Record<Category, CategoryInfo> = {
     token: "c",
     dwell: 45,
     geoapify: ["catering.cafe"],
-    limit: 60,
+    limit: 80,
     notableOnly: false,
   },
   food: {
@@ -37,7 +37,7 @@ export const CATEGORY_INFO: Record<Category, CategoryInfo> = {
     token: "f",
     dwell: 75,
     geoapify: ["catering.restaurant"],
-    limit: 60,
+    limit: 80,
     notableOnly: false,
   },
   shopping: {

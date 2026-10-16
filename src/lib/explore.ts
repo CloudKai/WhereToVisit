@@ -4,16 +4,18 @@ import { addPhotos } from "./images.ts";
 import { fetchOsmPlaces } from "./geoapify.ts";
 import { failureReason, TtlCache, withTimeout } from "./http.ts";
 import { polishPlaces } from "./llm.ts";
-import { capPerType, HEADLINE_PER_TYPE } from "./listing.ts";
+import { capPerType, foodCount, MIN_FOOD_PLACES } from "./listing.ts";
 import { mergePlaces } from "./merge.ts";
 import { getStore } from "./store.ts";
 import type { Destination, ExploreResult, Place } from "./types.ts";
 import { fetchWikivoyagePlaces } from "./wikivoyage.ts";
 
-export { capPerType, HEADLINE_PER_TYPE };
+export { capPerType };
 
 /** Most places kept per type (café, park, ...) and tier. */
-const MAX_PER_TYPE = 20;
+const MAX_PER_TYPE = 30;
+/** A sparse city search retries once at this radius. */
+const WIDE_RADIUS_M = 10000;
 
 const results = new TtlCache<ExploreResult>(6 * 3600 * 1000, 100);
 
@@ -106,6 +108,33 @@ export function prioritise(places: Place[]): Place[] {
     .map((entry) => entry.place);
 }
 
+type Gathered = {
+  wikivoyage: PromiseSettledResult<
+    Awaited<ReturnType<typeof fetchWikivoyagePlaces>>
+  >;
+  osm: PromiseSettledResult<Awaited<ReturnType<typeof fetchOsmPlaces>>>;
+  merged: ReturnType<typeof mergePlaces>;
+};
+
+/** Fetches both sources for a destination and merges what came back. */
+async function gather(
+  destination: Destination,
+  config: ReturnType<typeof getConfig>,
+): Promise<Gathered> {
+  const [wikivoyage, osm] = await Promise.allSettled([
+    fetchWikivoyagePlaces(destination, config.wikimediaContact),
+    fetchOsmPlaces(destination, config.geoapifyKey as string),
+  ]);
+  const merged = mergePlaces(
+    destination,
+    wikivoyage.status === "fulfilled" ? wikivoyage.value : [],
+    osm.status === "fulfilled"
+      ? withinBounds(osm.value, destination.bounds)
+      : [],
+  );
+  return { wikivoyage, osm, merged };
+}
+
 /**
  * Finds recommended places (food, shopping, sights, museums, parks) for a destination.
  * Wikivoyage supplies editor recommendations; OpenStreetMap (via Geoapify)
@@ -125,10 +154,31 @@ export async function explore(
   const config = getConfig();
   if (!config.geoapifyKey) throw new ConfigError("GEOAPIFY_API_KEY");
 
-  const [wikivoyage, osm] = await Promise.allSettled([
-    fetchWikivoyagePlaces(destination, config.wikimediaContact),
-    fetchOsmPlaces(destination, config.geoapifyKey),
-  ]);
+  let attempt = await gather(destination, config);
+  let widenedFrom: number | undefined;
+
+  // Too few places to eat? Look further out once, so a search is never empty-handed.
+  if (
+    !destination.bounds &&
+    destination.radiusM < WIDE_RADIUS_M &&
+    attempt.osm.status === "fulfilled" &&
+    foodCount(attempt.merged.editorPicks) + foodCount(attempt.merged.nearby) <
+      MIN_FOOD_PLACES
+  ) {
+    const wider = await gather(
+      { ...destination, radiusM: WIDE_RADIUS_M },
+      config,
+    );
+    const before =
+      foodCount(attempt.merged.editorPicks) + foodCount(attempt.merged.nearby);
+    const after =
+      foodCount(wider.merged.editorPicks) + foodCount(wider.merged.nearby);
+    if (after > before) {
+      widenedFrom = destination.radiusM;
+      attempt = wider;
+    }
+  }
+  const { wikivoyage, osm, merged } = attempt;
 
   if (wikivoyage.status === "rejected" && osm.status === "rejected") {
     throw osm.reason;
@@ -157,13 +207,12 @@ export async function explore(
     );
   }
 
-  const merged = mergePlaces(
-    destination,
-    wikivoyage.status === "fulfilled" ? wikivoyage.value : [],
-    osm.status === "fulfilled"
-      ? withinBounds(osm.value, destination.bounds)
-      : [],
-  );
+  if (widenedFrom !== undefined) {
+    notes.push(
+      `Only a few places to eat were found within ${(widenedFrom / 1000).toFixed(1).replace(/\.0$/, "")} km, so the search was widened to ${WIDE_RADIUS_M / 1000} km.`,
+    );
+  }
+
   const editorCandidates = capPerType(merged.editorPicks, MAX_PER_TYPE);
   const nearbyCandidates = capPerType(merged.nearby, MAX_PER_TYPE);
 

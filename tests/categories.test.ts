@@ -366,47 +366,75 @@ test("addPhotos uses Wikidata first, looks nearby only for sights, and tolerates
   assert.equal(none.find((p) => p.id === "a")?.photo, undefined);
 });
 
-// ---------- client-side filtering helpers ----------
+// ---------- what the results page shows ----------
 
-test("filtering is a pure function of the places already loaded", async () => {
-  const { applyFilter, countFor, HEADLINE_PER_TYPE } =
+test("a chosen type shows the top 15, best first, then everything on request", async () => {
+  const { selectVisible, FILTERED_VISIBLE } =
     await import("../src/lib/listing.ts");
-  const picks = [
-    ...Array.from({ length: 8 }, (_, i) =>
-      place(`park${i}`, "park", { tier: "editor" }),
-    ),
-    place("cafe1", "cafe", { tier: "editor" }),
-    place("food1", "food", { tier: "editor" }),
-  ];
-  const nearby = [place("museum1", "museum"), place("park9", "park")];
-  assert.equal(
-    applyFilter(picks, "park").length,
-    8,
-    "a chosen type shows everything",
+  const editorPicks = Array.from({ length: 4 }, (_, i) =>
+    place(`e${i}`, "food", { tier: "editor" }),
   );
-  assert.equal(
-    applyFilter(picks, "all").filter((p) => p.category === "park").length,
-    HEADLINE_PER_TYPE,
-  );
+  const nearby = Array.from({ length: 30 }, (_, i) => place(`n${i}`, "food"));
+  const lists = { editorPicks, nearby };
+
+  const first = selectVisible(lists, "food", false);
+  assert.equal(first.picks.length + first.more.length, FILTERED_VISIBLE);
   assert.deepEqual(
-    applyFilter(picks, "eat").map((p) => p.id),
-    ["cafe1", "food1"],
+    first.picks.map((p) => p.id),
+    ["e0", "e1", "e2", "e3"],
+    "editor picks come first",
   );
-  assert.equal(
-    countFor({ editorPicks: picks, nearby }, "park"),
-    9,
-    "counts include both lists",
-  );
-  assert.equal(countFor({ editorPicks: picks, nearby }, "eat"), 2);
-  assert.equal(
-    countFor({ editorPicks: picks, nearby }, "all"),
-    12,
-    "the All count is not capped",
-  );
+  assert.equal(first.more[0].id, "n0", "then the best of the rest, in order");
+  assert.equal(first.hidden, 34 - FILTERED_VISIBLE);
+
+  const all = selectVisible(lists, "food", true);
+  assert.equal(all.picks.length + all.more.length, 34);
+  assert.equal(all.hidden, 0);
 });
 
-test("explore keeps exporting the helpers other code imports", async () => {
+test("'All' gives food a real choice and still limits the other types", async () => {
+  const { selectVisible, HEADLINE, headlineTotal } =
+    await import("../src/lib/listing.ts");
+  assert.equal(
+    HEADLINE.cafe + HEADLINE.food,
+    14,
+    "food and drink: 10-15 places",
+  );
+  const mk = (category: Category, n: number) =>
+    Array.from({ length: n }, (_, i) => place(`${category}${i}`, category));
+  const nearby = [
+    ...mk("cafe", 20),
+    ...mk("food", 20),
+    ...mk("park", 20),
+    ...mk("museum", 20),
+  ];
+  const shown = selectVisible({ editorPicks: [], nearby }, "all", false);
+  const by = (c: Category) => shown.more.filter((p) => p.category === c).length;
+  assert.equal(by("cafe") + by("food"), 14);
+  assert.equal(by("park"), HEADLINE.park);
+  assert.equal(by("museum"), HEADLINE.museum);
+  assert.ok(headlineTotal() >= 14);
+  assert.equal(shown.hidden, 80 - shown.more.length);
+});
+
+test("filters and counts use what was already loaded", async () => {
+  const { countFor, selectVisible } = await import("../src/lib/listing.ts");
+  const editorPicks = [
+    place("c1", "cafe", { tier: "editor" }),
+    place("f1", "food", { tier: "editor" }),
+  ];
+  const nearby = [place("m1", "museum"), place("p1", "park")];
+  const lists = { editorPicks, nearby };
+  assert.deepEqual(
+    selectVisible(lists, "eat", false).picks.map((p) => p.id),
+    ["c1", "f1"],
+  );
+  assert.equal(countFor(lists, "eat"), 2);
+  assert.equal(countFor(lists, "all"), 4, "the All count is not limited");
+  assert.equal(countFor(lists, "park"), 1);
+});
+
+test("explore keeps exporting capPerType for other code", async () => {
   const mod = await import("../src/lib/explore.ts");
   assert.equal(typeof mod.capPerType, "function");
-  assert.equal(mod.HEADLINE_PER_TYPE, 5);
 });

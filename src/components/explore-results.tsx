@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { type CategoryFilter, FILTERS } from "@/lib/categories";
 import { AREA_OPTIONS, exploreHref, nearestArea } from "@/lib/destination";
-import { applyFilter, countFor, HEADLINE_PER_TYPE } from "@/lib/listing";
+import { countFor, FILTERED_VISIBLE, selectVisible } from "@/lib/listing";
 import type { Destination, Place } from "@/lib/types";
 import type { MapMarker } from "./map";
 import { PlaceCard } from "./place-card";
@@ -31,13 +31,13 @@ export function ExploreResults({
   initialFilter,
 }: Props) {
   const [filter, setFilter] = useState<CategoryFilter>(initialFilter);
+  const [expanded, setExpanded] = useState(false);
 
   const lists = useMemo(() => ({ editorPicks, nearby }), [editorPicks, nearby]);
-  const picks = useMemo(
-    () => applyFilter(editorPicks, filter),
-    [editorPicks, filter],
+  const { picks, more, hidden } = useMemo(
+    () => selectVisible(lists, filter, expanded),
+    [lists, filter, expanded],
   );
-  const more = useMemo(() => applyFilter(nearby, filter), [nearby, filter]);
   const counts = useMemo(
     () =>
       Object.fromEntries(
@@ -61,6 +61,7 @@ export function ExploreResults({
 
   function choose(next: CategoryFilter) {
     setFilter(next);
+    setExpanded(false);
     // Keep the address bar shareable without asking the server for anything.
     window.history.replaceState(null, "", exploreHref(destination, next));
   }
@@ -82,8 +83,10 @@ export function ExploreResults({
           {editorPicks.length > 0
             ? `${editorPicks.length} places recommended by travel editors, plus ${nearby.length} more nearby.`
             : `${nearby.length} places found nearby.`}
-          {filter === "all" &&
-            ` Showing the top ${HEADLINE_PER_TYPE} of each type — choose a type to see more.`}
+          {hidden > 0 &&
+            (filter === "all"
+              ? " Showing the best of each type — choose a type to see more."
+              : ` Showing the top ${FILTERED_VISIBLE}.`)}
         </p>
         <nav className="filters" aria-label="Filter by type">
           {FILTERS.map(({ id, label }) => (
@@ -162,27 +165,31 @@ export function ExploreResults({
 
       {more.length > 0 && (
         <section aria-labelledby="nearby-heading" className="nearby">
-          <details open={picks.length === 0}>
-            <summary id="nearby-heading">
-              {picks.length > 0
-                ? `More places nearby (${more.length})`
-                : `Places nearby (${more.length})`}
-            </summary>
-            <p className="section-note">
-              From OpenStreetMap. These have no editor recommendation, so they
-              are ordered by how complete their information is — not by quality.
-            </p>
-            <div className="grid">
-              {more.map((p) => (
-                <PlaceCard
-                  key={p.id}
-                  place={p}
-                  destination={destination.name}
-                />
-              ))}
-            </div>
-          </details>
+          <h2 id="nearby-heading">
+            {picks.length > 0 ? "More places nearby" : "Places nearby"}
+          </h2>
+          <p className="section-note">
+            From OpenStreetMap. These have no editor recommendation, so they are
+            ordered by how complete their information is — not by quality.
+          </p>
+          <div className="grid">
+            {more.map((p) => (
+              <PlaceCard key={p.id} place={p} destination={destination.name} />
+            ))}
+          </div>
         </section>
+      )}
+
+      {hidden > 0 && (
+        <p className="show-more">
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => setExpanded(true)}
+          >
+            Show {hidden} more
+          </button>
+        </p>
       )}
 
       {picks.length === 0 && more.length === 0 && (

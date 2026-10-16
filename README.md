@@ -24,8 +24,11 @@ reasons, the map and multi-day routing, and companion voting.
   full note is one click away. The AI never chooses what is recommended.
 - **Filters for every kind of place.** All · Food & drink · Cafés · Restaurants ·
   Malls & shopping · Attractions · Museums & culture · Parks & nature, each with a
-  count. "All" shows the top 5 of each type; choose a type to see more. Editor
+  count. "All" shows the best of each type (14 places to eat: 6 cafés and 8 restaurants); choose a type to see the top 15, then "Show more" for the rest. Editor
   picks come from Wikivoyage's Eat, Drink, See, Do and Buy listings.
+- **Never empty-handed.** If a city search finds fewer than 10 places to eat, it
+  automatically searches again out to 10 km and tells you it did. A map area you
+  chose yourself is never widened.
 - **Instant filters.** All places for a search are delivered once, so choosing a
   type filters the list and map in the browser with no new request.
 - **Search this area.** Move or zoom the map, then press "Search this area" (like
