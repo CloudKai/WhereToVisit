@@ -82,6 +82,27 @@ export async function GET() {
       result[`geoapify · ${category}`] = check;
   }
 
+  // "From links" looks place names up with Geoapify's geocoder, a different endpoint.
+  if (config.geoapifyKey) {
+    result["geoapify · find a place by name"] = {
+      configured: true,
+      ...(await probe(
+        () =>
+          fetch(
+            `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent("Yu Garden, Shanghai")}&limit=1&apiKey=${encodeURIComponent(config.geoapifyKey as string)}`,
+            { signal: timeout(), cache: "no-store" },
+          ),
+        "used by the From links page",
+      )),
+    };
+  }
+
+  result["feature switches"] = {
+    configured: true,
+    ok: true,
+    detail: `shared links ${config.communityPosts ? "on" : "off"} (COMMUNITY_POSTS) · TikTok caption reading ${config.tiktokOembed ? "on" : "off"} (TIKTOK_OEMBED)`,
+  };
+
   result.wikidataImages = {
     configured: true,
     ...(await probe(

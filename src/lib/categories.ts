@@ -89,10 +89,6 @@ export const CATEGORY_INFO: Record<Category, CategoryInfo> = {
 
 export const CATEGORIES = Object.keys(CATEGORY_INFO) as Category[];
 
-export function isCategory(value: unknown): value is Category {
-  return typeof value === "string" && value in CATEGORY_INFO;
-}
-
 const BY_TOKEN = new Map<string, Category>(
   CATEGORIES.map((category) => [CATEGORY_INFO[category].token, category]),
 );
