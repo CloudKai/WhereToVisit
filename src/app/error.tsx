@@ -1,17 +1,18 @@
 "use client";
-import { OperationState } from "@/components/operation-state";
-export default function ErrorPage({ reset }: { reset: () => void }) {
+
+export default function ErrorPage({
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
   return (
-    <div className="page-section">
-      <OperationState
-        kind="error"
-        title="This page could not load"
-        message="Please try again. If the problem continues, return home."
-      >
-        <button className="button" type="button" onClick={reset}>
-          Try again
-        </button>
-      </OperationState>
-    </div>
+    <section className="page-section problem" role="alert">
+      <h1>Something went wrong</h1>
+      <p>The page couldn’t be shown. This is usually temporary.</p>
+      <button type="button" className="button" onClick={reset}>
+        Try again
+      </button>
+    </section>
   );
 }
