@@ -244,7 +244,8 @@ export async function fetchWikivoyagePlaces(
   });
   const titles = (found.query?.geosearch ?? [])
     .filter((entry) => entry.ns === 0)
-    .slice(0, 6)
+    // Big cities keep their listings in district articles (e.g. "Tokyo/Shibuya").
+    .slice(0, 10)
     .map((entry) => entry.title);
   if (titles.length === 0) return [];
 
@@ -262,7 +263,7 @@ export async function fetchWikivoyagePlaces(
   const pages = await getJson<PagesResponse>("Wikivoyage", content.toString(), {
     headers,
     revalidate: 86400,
-    timeoutMs: 15000,
+    timeoutMs: 20000,
   });
 
   const maxKm = (radius / 1000) * 1.5;

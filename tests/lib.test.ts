@@ -103,7 +103,10 @@ test("WindowCounter enforces a limit per window", () => {
   assert.ok(!counter.take("a", 2, 20));
   assert.ok(counter.take("b", 2, 20));
   assert.ok(counter.take("a", 2, 1500), "window reset");
-  assert.ok(!new WindowCounter(1000).take("fresh", 0, 0), "a limit of 0 blocks even the first call");
+  assert.ok(
+    !new WindowCounter(1000).take("fresh", 0, 0),
+    "a limit of 0 blocks even the first call",
+  );
 });
 
 const SOURCE =
@@ -165,4 +168,18 @@ test("only shortened editor texts go to the model; invalid output is ignored", (
   assert.equal(out[0].reason.text, "Siphon coffee and thick toast since 1975.");
   assert.equal(out[2].reason.polished, false, "ungrounded line rejected");
   assert.equal(out[2].reason.text, "short");
+});
+
+test("nearestArea highlights the closest search-area option", async () => {
+  const { AREA_OPTIONS, nearestArea } =
+    await import("../src/lib/destination.ts");
+  assert.equal(AREA_OPTIONS.length, 3);
+  assert.equal(nearestArea(2000).radiusM, 2500);
+  assert.equal(nearestArea(6000).radiusM, 6000);
+  assert.equal(
+    nearestArea(8000).radiusM,
+    6000,
+    "8 km is nearer to 6 km than 10 km",
+  );
+  assert.equal(nearestArea(9500).radiusM, 10000);
 });

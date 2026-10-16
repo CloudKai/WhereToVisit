@@ -6,8 +6,10 @@ import type { MapMarker } from "@/components/map";
 import { SearchBox } from "@/components/search-box";
 import { ConfigError } from "@/lib/config";
 import {
+  AREA_OPTIONS,
   type CategoryFilter,
   exploreHref,
+  nearestArea,
   parseDestination,
   parseFilter,
 } from "@/lib/destination";
@@ -139,6 +141,26 @@ export default async function Explore({
               {label}
             </Link>
           ))}
+        </nav>
+        <nav className="filters" aria-label="Search area">
+          <span className="filter-label">Search area</span>
+          {AREA_OPTIONS.map((option) => {
+            const active =
+              nearestArea(destination.radiusM).radiusM === option.radiusM;
+            return (
+              <Link
+                key={option.radiusM}
+                href={exploreHref(
+                  { ...destination, radiusM: option.radiusM },
+                  filter,
+                )}
+                aria-current={active ? "true" : undefined}
+                className={active ? "chip active" : "chip"}
+              >
+                {option.label} · {option.detail}
+              </Link>
+            );
+          })}
         </nav>
       </header>
 

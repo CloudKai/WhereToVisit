@@ -202,12 +202,26 @@ const RADIUS_BY_TYPE: Record<string, number> = {
   locality: 3000,
   city: 6000,
   county: 10000,
+  // Cities such as Tokyo (a prefecture) or Shanghai (a municipality) are often
+  // mapped at "state" level, so this type must stay searchable.
+  state: 8000,
+};
+
+/** Lower is shown first: cities, then smaller areas, then bigger regions. */
+const TYPE_RANK: Record<string, number> = {
+  city: 0,
+  suburb: 1,
+  district: 1,
+  neighbourhood: 1,
+  locality: 1,
+  county: 2,
+  state: 3,
 };
 
 /** Converts autocomplete features to destination suggestions. */
 export function normalizeSuggestions(data: FeatureCollection): Suggestion[] {
   const seen = new Set<string>();
-  const out: Suggestion[] = [];
+  const ranked: { rank: number; index: number; suggestion: Suggestion }[] = [];
   for (const feature of data.features ?? []) {
     const p = feature.properties;
     if (!p) continue;
@@ -230,9 +244,17 @@ export function normalizeSuggestions(data: FeatureCollection): Suggestion[] {
     )?.trim();
     if (!label || !name || seen.has(label)) continue;
     seen.add(label);
-    out.push({ label, name, country: p.country, lat, lon, radiusM });
+    ranked.push({
+      rank: TYPE_RANK[type] ?? 4,
+      index: ranked.length,
+      suggestion: { label, name, country: p.country, lat, lon, radiusM },
+    });
   }
-  return out.slice(0, 6);
+  // Keep the service's own relevance order within each kind of place.
+  return ranked
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .slice(0, 6)
+    .map((entry) => entry.suggestion);
 }
 
 export async function suggestDestinations(

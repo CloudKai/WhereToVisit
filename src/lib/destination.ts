@@ -45,6 +45,22 @@ export function parseDestination(params: Params): Destination | null {
   };
 }
 
+/** How far from the centre to look. Shown as a control on the results page. */
+export const AREA_OPTIONS = [
+  { radiusM: 2500, label: "Close in", detail: "2.5 km" },
+  { radiusM: 6000, label: "City centre", detail: "6 km" },
+  { radiusM: 10000, label: "Wide", detail: "10 km" },
+] as const;
+
+/** The option closest to a radius, so any destination highlights one choice. */
+export function nearestArea(radiusM: number): (typeof AREA_OPTIONS)[number] {
+  return AREA_OPTIONS.reduce((best, option) =>
+    Math.abs(option.radiusM - radiusM) < Math.abs(best.radiusM - radiusM)
+      ? option
+      : best,
+  );
+}
+
 export type CategoryFilter = "all" | Category;
 
 export function parseFilter(

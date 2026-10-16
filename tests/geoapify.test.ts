@@ -146,3 +146,56 @@ test("normalizeSuggestions keeps destinations, drops streets and duplicates", ()
     ],
   );
 });
+
+test("cities mapped as a state (Tokyo, Shanghai) are searchable and rank sensibly", () => {
+  const suggestions = normalizeSuggestions({
+    features: [
+      {
+        properties: {
+          formatted: "Japan",
+          name: "Japan",
+          result_type: "country",
+          lat: 36,
+          lon: 138,
+        },
+      },
+      {
+        properties: {
+          formatted: "Tokyo, Japan",
+          name: "Tokyo",
+          country: "Japan",
+          result_type: "state",
+          lat: 35.68,
+          lon: 139.76,
+        },
+      },
+      {
+        properties: {
+          formatted: "Tokyo Station, Chiyoda, Japan",
+          name: "Chiyoda",
+          result_type: "district",
+          lat: 35.68,
+          lon: 139.76,
+        },
+      },
+      {
+        properties: {
+          formatted: "Tokyo, Ohio, United States",
+          name: "Tokyo",
+          result_type: "city",
+          lat: 40,
+          lon: -83,
+        },
+      },
+    ],
+  });
+  // Countries are still excluded; a city beats a district beats a state.
+  assert.deepEqual(
+    suggestions.map((s) => [s.label, s.radiusM]),
+    [
+      ["Tokyo, Ohio, United States", 6000],
+      ["Tokyo Station, Chiyoda, Japan", 2500],
+      ["Tokyo, Japan", 8000],
+    ],
+  );
+});
