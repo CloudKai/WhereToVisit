@@ -2,18 +2,65 @@ import { ConfigError, getConfig } from "./config.ts";
 import { inBounds } from "./geo.ts";
 import { addPhotos } from "./images.ts";
 import { fetchOsmPlaces } from "./geoapify.ts";
-import { TtlCache, withTimeout } from "./http.ts";
+import { failureReason, TtlCache, withTimeout } from "./http.ts";
 import { polishPlaces } from "./llm.ts";
+import { capPerType, HEADLINE_PER_TYPE } from "./listing.ts";
 import { mergePlaces } from "./merge.ts";
+import { getStore } from "./store.ts";
 import type { Destination, ExploreResult, Place } from "./types.ts";
 import { fetchWikivoyagePlaces } from "./wikivoyage.ts";
 
+export { capPerType, HEADLINE_PER_TYPE };
+
 /** Most places kept per type (café, park, ...) and tier. */
 const MAX_PER_TYPE = 20;
-/** The first few of each type are enriched first (they are what "All" shows). */
-export const HEADLINE_PER_TYPE = 5;
 
 const results = new TtlCache<ExploreResult>(6 * 3600 * 1000, 100);
+
+/** Results are also kept in the shared store (Redis) so every visitor and server instance reuses them. */
+const SHARED_TTL_SECONDS = 12 * 3600;
+const MAX_SHARED_BYTES = 700_000;
+
+async function readShared(
+  destination: Destination,
+): Promise<ExploreResult | null> {
+  const store = getStore(getConfig());
+  if (!store) return null;
+  try {
+    const raw = await store.get(`wtv:explore:v1:${cacheKey(destination)}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ExploreResult>;
+    if (!Array.isArray(parsed.editorPicks) || !Array.isArray(parsed.nearby)) {
+      return null;
+    }
+    return {
+      destination,
+      editorPicks: parsed.editorPicks,
+      nearby: parsed.nearby,
+      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
+      aiUsed: Boolean(parsed.aiUsed),
+    };
+  } catch {
+    return null; // a cache problem must never break a search
+  }
+}
+
+async function writeShared(result: ExploreResult): Promise<void> {
+  const store = getStore(getConfig());
+  if (!store) return;
+  try {
+    const { destination, ...rest } = result;
+    const raw = JSON.stringify(rest);
+    if (raw.length > MAX_SHARED_BYTES) return;
+    await store.set(
+      `wtv:explore:v1:${cacheKey(destination)}`,
+      raw,
+      SHARED_TTL_SECONDS,
+    );
+  } catch {
+    // Caching is an optimisation only.
+  }
+}
 
 function cacheKey(d: Destination): string {
   const area = d.bounds
@@ -40,16 +87,6 @@ export function withinBounds<T extends { lat?: number; lon?: number }>(
 
 function describe(reason: unknown): string {
   return reason instanceof Error ? reason.message : "unknown error";
-}
-
-/** Keeps the first `max` places of each type, preserving order. */
-export function capPerType(places: Place[], max: number): Place[] {
-  const seen = new Map<string, number>();
-  return places.filter((place) => {
-    const count = seen.get(place.category) ?? 0;
-    seen.set(place.category, count + 1);
-    return count < max;
-  });
 }
 
 /**
@@ -79,6 +116,11 @@ export async function explore(
 ): Promise<ExploreResult> {
   const cached = results.get(cacheKey(destination));
   if (cached) return { ...cached, destination };
+  const shared = await readShared(destination);
+  if (shared) {
+    results.set(cacheKey(destination), shared);
+    return shared;
+  }
 
   const config = getConfig();
   if (!config.geoapifyKey) throw new ConfigError("GEOAPIFY_API_KEY");
@@ -101,8 +143,17 @@ export async function explore(
   }
   if (osm.status === "rejected") {
     console.warn(`[explore] Geoapify failed: ${describe(osm.reason)}`);
+    const why = failureReason(osm.reason);
+    const hint =
+      process.env.NODE_ENV === "production"
+        ? ""
+        : " (Development: open /api/status to see exactly which request fails.)";
     notes.push(
-      "Nearby map data could not be loaded right now, so practical details may be missing.",
+      why === "key-rejected"
+        ? `The map-data key was rejected, so only travel-editor picks are shown. The site owner should check GEOAPIFY_API_KEY.${hint}`
+        : why === "quota"
+          ? `Today’s map-data allowance is used up, so only travel-editor picks are shown. Try again tomorrow.${hint}`
+          : `Nearby map data could not be loaded right now, so only travel-editor picks are shown and practical details may be missing.${hint}`,
     );
   }
 
@@ -153,6 +204,7 @@ export async function explore(
   // Only cache complete results so a temporary upstream failure is retried.
   if (wikivoyage.status === "fulfilled" && osm.status === "fulfilled") {
     results.set(cacheKey(destination), result);
+    await writeShared(result);
   }
   return result;
 }

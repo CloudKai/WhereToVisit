@@ -26,6 +26,8 @@ reasons, the map and multi-day routing, and companion voting.
   Malls & shopping · Attractions · Museums & culture · Parks & nature, each with a
   count. "All" shows the top 5 of each type; choose a type to see more. Editor
   picks come from Wikivoyage's Eat, Drink, See, Do and Buy listings.
+- **Instant filters.** All places for a search are delivered once, so choosing a
+  type filters the list and map in the browser with no new request.
 - **Search this area.** Move or zoom the map, then press "Search this area" (like
   Google Maps) to rebuild the list for exactly what is on screen — editor picks
   first, then the best-documented nearby places, with the same type filters. Areas
@@ -106,8 +108,11 @@ works the same on Vercel, AWS (Amplify, ECS, Lambda, EC2) or anywhere else.
 3. Without these in production, voting is disabled with a clear message rather
    than silently losing votes. Check the Upstash free-tier limits for your use.
 
-Rate limits and expiry live in Redis, so they hold across serverless instances.
-Other in-memory caches (search results, AI condensing) are per instance.
+Rate limits, expiry and the search-result cache live in Redis, so they hold
+across serverless instances. Finished searches are stored for 12 hours, so the
+second visitor to a destination costs no API calls at all. Without Redis the same
+cache is kept per server process.
+Other in-memory caches (AI condensing) are per instance.
 
 ## Run it
 

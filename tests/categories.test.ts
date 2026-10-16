@@ -365,3 +365,48 @@ test("addPhotos uses Wikidata first, looks nearby only for sights, and tolerates
   });
   assert.equal(none.find((p) => p.id === "a")?.photo, undefined);
 });
+
+// ---------- client-side filtering helpers ----------
+
+test("filtering is a pure function of the places already loaded", async () => {
+  const { applyFilter, countFor, HEADLINE_PER_TYPE } =
+    await import("../src/lib/listing.ts");
+  const picks = [
+    ...Array.from({ length: 8 }, (_, i) =>
+      place(`park${i}`, "park", { tier: "editor" }),
+    ),
+    place("cafe1", "cafe", { tier: "editor" }),
+    place("food1", "food", { tier: "editor" }),
+  ];
+  const nearby = [place("museum1", "museum"), place("park9", "park")];
+  assert.equal(
+    applyFilter(picks, "park").length,
+    8,
+    "a chosen type shows everything",
+  );
+  assert.equal(
+    applyFilter(picks, "all").filter((p) => p.category === "park").length,
+    HEADLINE_PER_TYPE,
+  );
+  assert.deepEqual(
+    applyFilter(picks, "eat").map((p) => p.id),
+    ["cafe1", "food1"],
+  );
+  assert.equal(
+    countFor({ editorPicks: picks, nearby }, "park"),
+    9,
+    "counts include both lists",
+  );
+  assert.equal(countFor({ editorPicks: picks, nearby }, "eat"), 2);
+  assert.equal(
+    countFor({ editorPicks: picks, nearby }, "all"),
+    12,
+    "the All count is not capped",
+  );
+});
+
+test("explore keeps exporting the helpers other code imports", async () => {
+  const mod = await import("../src/lib/explore.ts");
+  assert.equal(typeof mod.capPerType, "function");
+  assert.equal(mod.HEADLINE_PER_TYPE, 5);
+});
