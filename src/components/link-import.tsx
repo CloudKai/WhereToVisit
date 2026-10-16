@@ -3,11 +3,17 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type Candidate,
+  createLineReader,
+  type ExtractCapabilities,
   type ExtractResponse,
   MAX_ENTRIES,
   MAX_HINT_LENGTH,
   MAX_TEXT_LENGTH,
   type Mention,
+  parseStreamEvent,
+  type Progress,
+  progressLabel,
+  progressPercent,
 } from "@/lib/extract-types";
 import {
   candidateToStop,
@@ -49,10 +55,20 @@ export function LinkImport() {
   const [result, setResult] = useState<ExtractResponse | null>(null);
   const [choice, setChoice] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [caps, setCaps] = useState<ExtractCapabilities | null>(null);
   const [error, setError] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const [restored, setRestored] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
+
+  // What this site can read, so hints under each link are accurate.
+  useEffect(() => {
+    fetch("/api/extract", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: ExtractCapabilities | null) => data && setCaps(data))
+      .catch(() => undefined);
+  }, []);
 
   // Bring back the last list after visiting the trip page and returning.
   useEffect(() => {
@@ -90,12 +106,17 @@ export function LinkImport() {
   }
 
   const filled = posts.filter((p) => p.url.trim() || p.text.trim());
+  // Every post needs a valid link; the caption is optional.
+  const missingLink = filled.some((p) => !parseSocialUrl(p.url));
+  const canSubmit = filled.length > 0 && !missingLink && !busy;
 
   async function find(event: React.FormEvent) {
     event.preventDefault();
-    if (filled.length === 0 || busy) return;
+    if (!canSubmit) return;
     setBusy(true);
     setError(undefined);
+    setProgress({ phase: "reading", done: 0, total: filled.length });
+    let finished: ExtractResponse | null = null;
     try {
       const response = await fetch("/api/extract", {
         method: "POST",
@@ -105,30 +126,57 @@ export function LinkImport() {
           hint: hint.trim() || undefined,
         }),
       });
-      const data = (await response.json().catch(() => ({}))) as
-        ExtractResponse | { error?: string };
-      if (!response.ok) {
-        setError(
-          (data as { error?: string }).error ??
-            "Something went wrong. Try again.",
-        );
-      } else {
-        setResult(data as ExtractResponse);
-        setChoice({});
-        setSelected(undefined);
-        setTimeout(
-          () =>
-            resultRef.current?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            }),
-          50,
-        );
+      if (!response.ok || !response.body) {
+        const data = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error ?? "Something went wrong. Try again.");
       }
-    } catch {
-      setError("Can’t reach the server. Check your connection and try again.");
+      // The server reports each stage as it finishes, one JSON line at a time.
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const lines = createLineReader();
+      const handle = (line: string) => {
+        const event = parseStreamEvent(line);
+        if (!event) return;
+        if (event.type === "progress") setProgress(event.progress);
+        else if (event.type === "result") finished = event.data;
+        else throw new Error(event.message);
+      };
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of lines.push(
+          decoder.decode(value, { stream: true }),
+        )) {
+          handle(line);
+        }
+      }
+      for (const line of lines.flush()) handle(line);
+
+      if (!finished) throw new Error("The search ended early. Try again.");
+      setResult(finished);
+      setChoice({});
+      setSelected(undefined);
+      setTimeout(
+        () =>
+          resultRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          }),
+        50,
+      );
+    } catch (e) {
+      setError(
+        e instanceof TypeError
+          ? "Can’t reach the server. Check your connection and try again."
+          : e instanceof Error
+            ? e.message
+            : "Something went wrong. Try again.",
+      );
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -223,108 +271,150 @@ export function LinkImport() {
         </p>
       </header>
 
-      <form className="links-form" onSubmit={find}>
+      <form className="links-form" onSubmit={find} noValidate>
         <p className="hint links-honest">
-          <strong>How it works:</strong> these apps don’t let other apps read
-          their posts, so each link is kept as your <em>source</em>, and you
-          paste the post’s caption (or just type the place names, one per line).
-          We find the places in that text and look up where they are.
+          <strong>How it works:</strong> add the link to each post — it’s kept
+          as your <em>source</em>. Instagram and Xiaohongshu don’t let other
+          apps read posts, so to find places in them, also paste the caption (or
+          type the place names, one per line). The caption is optional, but
+          without it there is nothing for us to search.
         </p>
 
-        {posts.map((post, index) => {
-          const platform = post.url.trim()
-            ? parseSocialUrl(post.url)?.platform
-            : undefined;
-          const bad = post.url.trim() && !platform;
-          return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and have no identity
-            <fieldset className="post-row" key={index}>
-              <legend>
-                Post {index + 1}
-                {platform && (
-                  <span className={`social-chip social-${platform}`}>
-                    {PLATFORM_LABEL[platform]}
-                  </span>
-                )}
-              </legend>
-              <label className="visually-hidden" htmlFor={`url-${index}`}>
-                Link to post {index + 1}
-              </label>
-              <input
-                id={`url-${index}`}
-                type="url"
-                inputMode="url"
-                placeholder="Link to the post (optional)"
-                value={post.url}
-                maxLength={300}
-                aria-invalid={bad ? "true" : undefined}
-                onChange={(event) => update(index, { url: event.target.value })}
-              />
-              {bad && (
-                <p className="hint form-error" role="alert">
-                  That isn’t a link to a single TikTok, Instagram or Xiaohongshu
-                  post. You can still paste its caption below.
-                </p>
-              )}
-              <label className="visually-hidden" htmlFor={`text-${index}`}>
-                Caption or place names for post {index + 1}
-              </label>
-              <textarea
-                id={`text-${index}`}
-                rows={3}
-                placeholder="Paste the caption, or type place names — one per line"
-                value={post.text}
-                maxLength={MAX_TEXT_LENGTH}
-                onChange={(event) =>
-                  update(index, { text: event.target.value })
-                }
-              />
-              {posts.length > 1 && (
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() =>
-                    setPosts((c) => c.filter((_, i) => i !== index))
+        <fieldset className="form-lock" disabled={busy}>
+          {posts.map((post, index) => {
+            const platform = post.url.trim()
+              ? parseSocialUrl(post.url)?.platform
+              : undefined;
+            const bad = post.url.trim() && !platform;
+            const noLink = !post.url.trim() && post.text.trim();
+            const noCaption = platform && !post.text.trim();
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and have no identity
+              <fieldset className="post-row" key={index}>
+                <legend>
+                  Post {index + 1}
+                  {platform && (
+                    <span className={`social-chip social-${platform}`}>
+                      {PLATFORM_LABEL[platform]}
+                    </span>
+                  )}
+                </legend>
+                <label className="visually-hidden" htmlFor={`url-${index}`}>
+                  Link to post {index + 1}
+                </label>
+                <input
+                  id={`url-${index}`}
+                  type="url"
+                  inputMode="url"
+                  placeholder="Link to the post (required)"
+                  value={post.url}
+                  maxLength={300}
+                  required={Boolean(post.text.trim())}
+                  aria-invalid={bad || noLink ? "true" : undefined}
+                  onChange={(event) =>
+                    update(index, { url: event.target.value })
                   }
-                >
-                  Remove post {index + 1}
-                </button>
-              )}
-            </fieldset>
-          );
-        })}
+                />
+                {bad && (
+                  <p className="hint form-error" role="alert">
+                    That isn’t a link to a single TikTok, Instagram or
+                    Xiaohongshu post.
+                  </p>
+                )}
+                {noLink && (
+                  <p className="hint form-error" role="alert">
+                    Add the link to this post. A caption on its own isn’t
+                    enough.
+                  </p>
+                )}
+                <label className="visually-hidden" htmlFor={`text-${index}`}>
+                  Caption or place names for post {index + 1}
+                </label>
+                <textarea
+                  id={`text-${index}`}
+                  rows={3}
+                  placeholder="Caption or place names — optional, one per line"
+                  value={post.text}
+                  maxLength={MAX_TEXT_LENGTH}
+                  onChange={(event) =>
+                    update(index, { text: event.target.value })
+                  }
+                />
+                {noCaption && (
+                  <p className="hint">
+                    {platform === "tiktok"
+                      ? caps?.tiktokCaptions
+                        ? "We’ll try to read this TikTok’s caption. If that fails, add it here."
+                        : "TikTok captions aren’t read automatically here. Add the caption to find places."
+                      : `${PLATFORM_LABEL[platform]} doesn’t let other apps read posts. Add the caption to find places.`}
+                  </p>
+                )}
+                {posts.length > 1 && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() =>
+                      setPosts((c) => c.filter((_, i) => i !== index))
+                    }
+                  >
+                    Remove post {index + 1}
+                  </button>
+                )}
+              </fieldset>
+            );
+          })}
 
-        <div className="links-actions">
-          {posts.length < MAX_ENTRIES && (
-            <button
-              type="button"
-              className="button secondary"
-              onClick={() => setPosts((c) => [...c, emptyPost()])}
-            >
-              + Add another post
+          <div className="links-actions">
+            {posts.length < MAX_ENTRIES && (
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setPosts((c) => [...c, emptyPost()])}
+              >
+                + Add another post
+              </button>
+            )}
+            <label className="hint-field">
+              Where is this?{" "}
+              <span className="hint">
+                (city or area — helps find the right one)
+              </span>
+              <input
+                type="text"
+                placeholder="e.g. Shanghai"
+                value={hint}
+                maxLength={MAX_HINT_LENGTH}
+                onChange={(event) => setHint(event.target.value)}
+              />
+            </label>
+            <button type="submit" className="button" disabled={!canSubmit}>
+              {busy ? "Finding places…" : "Find places"}
             </button>
-          )}
-          <label className="hint-field">
-            Where is this?{" "}
-            <span className="hint">
-              (city or area — helps find the right one)
-            </span>
-            <input
-              type="text"
-              placeholder="e.g. Shanghai"
-              value={hint}
-              maxLength={MAX_HINT_LENGTH}
-              onChange={(event) => setHint(event.target.value)}
-            />
-          </label>
-          <button
-            type="submit"
-            className="button"
-            disabled={busy || filled.length === 0}
-          >
-            {busy ? "Finding places…" : "Find places"}
-          </button>
-        </div>
+          </div>
+        </fieldset>
+
+        {progress && (
+          <div className="progress" aria-live="polite">
+            <div
+              className="progress-bar"
+              role="progressbar"
+              aria-label="Finding places"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progressPercent(progress)}
+              aria-valuetext={progressLabel(progress)}
+            >
+              <div
+                className="progress-fill"
+                style={{ width: `${progressPercent(progress)}%` }}
+              />
+            </div>
+            <p className="progress-label">
+              {progressLabel(progress)}{" "}
+              <span className="hint">{progressPercent(progress)}%</span>
+            </p>
+          </div>
+        )}
         <p className="hint">
           The text you paste is sent to OpenAI to find place names, and place
           names are looked up with Geoapify. Links are never opened by us.

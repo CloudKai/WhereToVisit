@@ -9,6 +9,7 @@ import {
   MAX_NAMES_PER_ENTRY,
   MAX_TEXT_LENGTH,
   type Mention,
+  type Progress,
 } from "./extract-types.ts";
 import { geocodePlace } from "./geoapify.ts";
 import { getJson, WindowCounter } from "./http.ts";
@@ -197,15 +198,15 @@ function cleanHint(value: unknown): string | undefined {
   return hint || undefined;
 }
 
-const NO_TEXT: Record<Platform | "none", string> = {
-  tiktok:
-    "Paste the caption or type the place names below. (Reading TikTok captions automatically is switched off.)",
-  instagram:
-    "Instagram doesn’t let other apps read posts. Paste the caption or type the place names below.",
-  xiaohongshu:
-    "Xiaohongshu doesn’t let other apps read posts. Paste the caption or type the place names below.",
-  none: "Add a post link, a caption, or some place names.",
-};
+/** What to tell someone whose post gave us no text to read. */
+function noTextMessage(platform: Platform, tiktokReadable: boolean): string {
+  if (platform === "tiktok") {
+    return tiktokReadable
+      ? "We couldn’t read this TikTok’s caption. Add the caption (or the place names) to find places."
+      : "TikTok captions aren’t read automatically here. Add the caption (or the place names) to find places.";
+  }
+  return `${PLATFORM_LABEL[platform]} doesn’t let other apps read posts. Add the caption (or the place names) to find places.`;
+}
 
 async function inBatches<T, R>(
   items: T[],
@@ -219,42 +220,58 @@ async function inBatches<T, R>(
   return out;
 }
 
-/**
- * Finds the places named in the posts a person provided and where they are.
- * Nothing here reads Instagram or Xiaohongshu; text comes from the person
- * (and, only if switched on, a TikTok caption).
- */
-export async function extractPlaces(
-  input: { entries?: unknown; hint?: unknown },
-  config: Config,
-  deps: Deps = defaultDeps(config),
-): Promise<ExtractResponse> {
+export type CleanInput = {
+  entries: { url: string; text: string }[];
+  hint: string | undefined;
+};
+
+/** Checks the request shape. Throws a 400 before any work is done. */
+export function validateExtractInput(input: {
+  entries?: unknown;
+  hint?: unknown;
+}): CleanInput {
   if (!Array.isArray(input.entries) || input.entries.length === 0) {
     throw new RoomError(400, "Add at least one post.");
   }
   if (input.entries.length > MAX_ENTRIES) {
     throw new RoomError(400, `Add up to ${MAX_ENTRIES} posts at a time.`);
   }
-  const hint = cleanHint(input.hint);
-  const notes: string[] = [];
-
-  const entries: EntryResult[] = [];
-  const texts: { index: number; text: string }[] = [];
-
-  for (let index = 0; index < input.entries.length; index++) {
-    const raw = (input.entries[index] ?? {}) as {
-      url?: unknown;
-      text?: unknown;
-    };
-    const urlText = typeof raw.url === "string" ? raw.url.trim() : "";
-    const typed = typeof raw.text === "string" ? raw.text.trim() : "";
-    if (typed.length > MAX_TEXT_LENGTH) {
+  const entries = input.entries.map((item) => {
+    const raw = (item ?? {}) as { url?: unknown; text?: unknown };
+    const text = typeof raw.text === "string" ? raw.text.trim() : "";
+    if (text.length > MAX_TEXT_LENGTH) {
       throw new RoomError(
         400,
         `Each caption can be up to ${MAX_TEXT_LENGTH} characters.`,
       );
     }
-    const source = urlText ? parseSocialUrl(urlText) : null;
+    return { url: typeof raw.url === "string" ? raw.url.trim() : "", text };
+  });
+  return { entries, hint: cleanHint(input.hint) };
+}
+
+/**
+ * Finds the places named in the posts a person provided and where they are.
+ * Every post needs a valid link (it is kept as the source); the caption is
+ * optional. Nothing here reads Instagram or Xiaohongshu, and a TikTok caption
+ * is read only when switched on. `onProgress` is told as each stage advances.
+ */
+export async function extractPlaces(
+  input: { entries?: unknown; hint?: unknown },
+  config: Config,
+  deps: Deps = defaultDeps(config),
+  onProgress: (progress: Progress) => void = () => undefined,
+): Promise<ExtractResponse> {
+  const { entries: given, hint } = validateExtractInput(input);
+  const notes: string[] = [];
+  const entries: EntryResult[] = [];
+  const texts: { index: number; text: string }[] = [];
+
+  // 1. Check each link and gather the text to search.
+  onProgress({ phase: "reading", done: 0, total: given.length });
+  for (let index = 0; index < given.length; index++) {
+    const { url, text: typed } = given[index];
+    const source = url ? parseSocialUrl(url) : null;
     const entry: EntryResult = {
       index,
       ...(source ? { source } : {}),
@@ -262,36 +279,38 @@ export async function extractPlaces(
       message: "",
     };
 
-    let caption = "";
-    if (source?.platform === "tiktok" && config.tiktokOembed) {
-      try {
-        caption = (await deps.caption(source.url)).slice(0, MAX_TEXT_LENGTH);
-      } catch {
-        notes.push(
-          `Couldn’t read the TikTok caption for post ${index + 1} (private, removed or unavailable).`,
-        );
+    if (!source) {
+      entry.status = "bad-link";
+      entry.message = url
+        ? "That isn’t a link to a single TikTok, Instagram or Xiaohongshu post."
+        : "Add the link to the post. A caption on its own isn’t enough.";
+    } else {
+      let caption = "";
+      if (source.platform === "tiktok" && config.tiktokOembed) {
+        try {
+          caption = (await deps.caption(source.url)).slice(0, MAX_TEXT_LENGTH);
+        } catch {
+          notes.push(
+            `Couldn’t read the TikTok caption for post ${index + 1} (private, removed or unavailable).`,
+          );
+        }
+      }
+      const text = [caption, typed].filter(Boolean).join("\n").trim();
+      if (text) {
+        texts.push({ index, text });
+      } else {
+        entry.status = "no-text";
+        entry.message = noTextMessage(source.platform, config.tiktokOembed);
       }
     }
-    const text = [caption, typed].filter(Boolean).join("\n").trim();
-
-    if (urlText && !source) {
-      entry.status = "bad-link";
-      entry.message =
-        "That isn’t a link to a single TikTok, Instagram or Xiaohongshu post" +
-        (typed ? ", so only the text you pasted was used." : ".");
-    }
-    if (text) {
-      texts.push({ index, text });
-    } else if (entry.status !== "bad-link") {
-      entry.status = "no-text";
-      entry.message = NO_TEXT[source?.platform ?? "none"];
-    }
     entries.push(entry);
+    onProgress({ phase: "reading", done: index + 1, total: given.length });
   }
 
-  // Place names: the model if available, otherwise one name per line.
+  // 2. Place names: the model if available, otherwise one name per line.
   const named = new Map<number, string[]>();
   let modelOk = false;
+  if (texts.length > 0) onProgress({ phase: "names", done: 0, total: 1 });
   if (texts.length > 0 && config.openaiKey) {
     try {
       const fromModel = await deps.names(texts);
@@ -315,8 +334,9 @@ export async function extractPlaces(
   if (!modelOk) {
     for (const { index, text } of texts) named.set(index, namesFromLines(text));
   }
+  if (texts.length > 0) onProgress({ phase: "names", done: 1, total: 1 });
 
-  // Where each place is.
+  // 3. Where each place is.
   const pending: { entry: number; name: string }[] = [];
   for (const { index } of texts) {
     for (const name of named.get(index) ?? []) {
@@ -327,12 +347,17 @@ export async function extractPlaces(
     notes.push(`Showing the first ${MAX_MENTIONS} places.`);
   }
   let geocodeFailed = false;
+  let located = 0;
+  onProgress({ phase: "locating", done: 0, total: pending.length });
   const found = await inBatches(pending, 4, async (item) => {
     try {
       return await deps.geocode(item.name, hint);
     } catch {
       geocodeFailed = true;
       return [] as Candidate[];
+    } finally {
+      located++;
+      onProgress({ phase: "locating", done: located, total: pending.length });
     }
   });
   if (geocodeFailed) {
@@ -359,7 +384,7 @@ export async function extractPlaces(
     } else {
       const label = entry.source
         ? PLATFORM_LABEL[entry.source.platform]
-        : "Text";
+        : "Post";
       entry.message = `${label}: ${count} ${count === 1 ? "place" : "places"} found.`;
     }
   }

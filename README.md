@@ -53,7 +53,10 @@ for each day, and let friends vote on it. No accounts.
 - **Shareable, not stored.** The trip lives in your browser tab and in the page
   link (`/plan#p=…`). Nothing about it is saved on a server.
 - **From links (`/links`).** Add saved TikTok / Instagram / Xiaohongshu posts.
-  Each link is kept as the _source_; you paste the caption (or type place names).
+  The link is required and kept as the _source_; the caption is optional, but
+  Instagram and Xiaohongshu posts can't be read, so without a caption (or typed
+  place names) there is nothing to search. A progress bar shows each stage while
+  it works and the form is locked until it finishes.
   The AI picks place names out of that text (a name is dropped unless it is
   really written there), Geoapify finds where each is, and they appear on a map.
   You confirm each match, then add places to your trip.

@@ -25,6 +25,8 @@ const BASE: Config = {
   tiktokOembed: false,
 };
 const WITH_AI: Config = { ...BASE, openaiKey: "k" };
+const IG = "https://www.instagram.com/reel/Cabcde12345/";
+const post = (text: string, url = IG) => ({ url, text });
 
 function candidate(
   label: string,
@@ -161,13 +163,13 @@ test("an instruction hidden in a caption cannot add places", async () => {
   });
   // Both names ARE in the text, as the attacker wrote them, so they pass the text
   // check. They are only places to look up: they cannot change anything else.
-  const result = await extractPlaces({ entries: [{ text }] }, WITH_AI, d);
+  const result = await extractPlaces({ entries: [post(text)] }, WITH_AI, d);
   assert.deepEqual(result.mentions.map((m) => m.name).sort(), [
     "Eiffel Tower",
     "White House",
   ]);
   const clean = await extractPlaces(
-    { entries: [{ text: "Great cafe, nothing else" }] },
+    { entries: [post("Great cafe, nothing else")] },
     WITH_AI,
     deps({ names: async () => new Map([[0, ["Eiffel Tower"]]]) }),
   );
@@ -178,15 +180,13 @@ test("an instruction hidden in a caption cannot add places", async () => {
   );
 });
 
-test("Instagram and Xiaohongshu links without text say plainly what is needed", async () => {
+test("a link without a caption says plainly what is needed", async () => {
   const result = await extractPlaces(
     {
       entries: [
         { url: "https://www.instagram.com/p/Cabcde12345/" },
         { url: "https://www.xiaohongshu.com/explore/64a1b2c3d4e5f60718293a4b" },
         { url: "https://www.tiktok.com/@a/video/12345678" },
-        { url: "https://evil.example/x" },
-        {},
       ],
     },
     WITH_AI,
@@ -194,22 +194,55 @@ test("Instagram and Xiaohongshu links without text say plainly what is needed", 
   );
   assert.deepEqual(
     result.entries.map((e) => e.status),
-    ["no-text", "no-text", "no-text", "bad-link", "no-text"],
+    ["no-text", "no-text", "no-text"],
   );
   assert.match(
     result.entries[0].message,
-    /Instagram doesn’t let other apps read posts/,
+    /Instagram doesn’t let other apps read posts. Add the caption/,
   );
   assert.match(
     result.entries[1].message,
-    /Xiaohongshu doesn’t let other apps read posts/,
+    /Xiaohongshu doesn’t let other apps read posts. Add the caption/,
   );
-  assert.match(result.entries[2].message, /switched off/);
   assert.match(
-    result.entries[3].message,
-    /single TikTok, Instagram or Xiaohongshu post/,
+    result.entries[2].message,
+    /TikTok captions aren’t read automatically here/,
   );
   assert.equal(result.mentions.length, 0);
+});
+
+test("the link is required: a caption alone, or a bad link, is not used", async () => {
+  const d = deps({
+    names: async (texts) =>
+      new Map(texts.map((t) => [t.index, ["Din Tai Fung"]])),
+  });
+  const result = await extractPlaces(
+    {
+      entries: [
+        { text: "Din Tai Fung" },
+        { url: "", text: "Din Tai Fung" },
+        { url: "https://evil.example/x", text: "Din Tai Fung" },
+        { url: "https://www.tiktok.com/@a", text: "Din Tai Fung" },
+      ],
+    },
+    WITH_AI,
+    d,
+  );
+  assert.deepEqual(
+    result.entries.map((e) => e.status),
+    ["bad-link", "bad-link", "bad-link", "bad-link"],
+  );
+  assert.match(result.entries[0].message, /Add the link to the post/);
+  assert.match(
+    result.entries[2].message,
+    /single TikTok, Instagram or Xiaohongshu post/,
+  );
+  assert.equal(
+    result.mentions.length,
+    0,
+    "text without a valid link is never searched",
+  );
+  assert.equal(d.geocoded.length, 0);
 });
 
 test("TikTok captions are only read when switched on, and failures are explained", async () => {
@@ -256,7 +289,7 @@ test("TikTok captions are only read when switched on, and failures are explained
 
 test("if the AI step fails, typed lines still work and the person is told", async () => {
   const result = await extractPlaces(
-    { entries: [{ text: "Din Tai Fung\nYu Garden" }] },
+    { entries: [post("Din Tai Fung\nYu Garden")] },
     WITH_AI,
     deps({
       names: async () => {
@@ -275,10 +308,11 @@ test("without an AI key, typed lines work and a long caption finds nothing", asy
   const result = await extractPlaces(
     {
       entries: [
-        { text: "Din Tai Fung" },
-        {
-          text: "We had the best dumplings of our whole trip at a tiny place and then walked around for hours.",
-        },
+        post("Din Tai Fung"),
+        post(
+          "We had the best dumplings of our whole trip at a tiny place and then walked around for hours.",
+          "https://www.instagram.com/reel/Cxyzxy98765/",
+        ),
       ],
     },
     BASE,
@@ -294,7 +328,7 @@ test("without an AI key, typed lines work and a long caption finds nothing", asy
 
 test("places that cannot be located are kept, empty, and the person is told", async () => {
   const result = await extractPlaces(
-    { entries: [{ text: "Din Tai Fung" }] },
+    { entries: [post("Din Tai Fung")] },
     BASE,
     deps({
       geocode: async () => {
@@ -312,16 +346,17 @@ test("requests are bounded", async () => {
   await assert.rejects(bad(undefined), RoomError);
   await assert.rejects(bad([]), RoomError);
   await assert.rejects(
-    bad(Array.from({ length: 9 }, () => ({ text: "a" }))),
+    bad(Array.from({ length: 9 }, () => post("a"))),
     RoomError,
   );
-  await assert.rejects(bad([{ text: "x".repeat(1501) }]), RoomError);
+  await assert.rejects(bad([post("x".repeat(1501))]), RoomError);
 
-  const many = Array.from({ length: 8 }, (_, i) => ({
-    text: Array.from({ length: 8 }, (_, j) => `Place number ${i}${j}`).join(
-      "\n",
+  const many = Array.from({ length: 8 }, (_, i) =>
+    post(
+      Array.from({ length: 8 }, (_, j) => `Place number ${i}${j}`).join("\n"),
+      `https://www.instagram.com/reel/Cabcde1234${i}/`,
     ),
-  }));
+  );
   const capped = await extractPlaces({ entries: many }, BASE, deps());
   assert.equal(capped.mentions.length, MAX_MENTIONS);
   assert.ok(capped.notes.some((n) => /first 30 places/.test(n)));
@@ -413,4 +448,180 @@ test("a matched place becomes a trip stop", () => {
   assert.equal(stop.dwell, 60);
   assert.equal(stop.address, "Yu Garden, Shanghai");
   assert.equal(candidateToStop(candidate("Bad", 999, 0)), null);
+});
+
+// ---------- progress ----------
+
+test("progress is reported in order and always ends at 100%", async () => {
+  const { progressPercent } = await import("../src/lib/extract-types.ts");
+  const seen: { phase: string; done: number; total: number }[] = [];
+  await extractPlaces(
+    {
+      entries: [
+        post("Din Tai Fung\nYu Garden\nThe Bund"),
+        post("Nanjing Road", "https://www.instagram.com/reel/Cxyzxy98765/"),
+      ],
+    },
+    BASE,
+    deps(),
+    (p) => seen.push({ ...p }),
+  );
+  const percents = seen.map((p) => progressPercent(p as never));
+  assert.deepEqual(
+    percents,
+    [...percents].sort((a, b) => a - b),
+    "the bar never moves backwards",
+  );
+  assert.equal(percents.at(-1), 100);
+  assert.deepEqual(seen[0], { phase: "reading", done: 0, total: 2 });
+  assert.ok(seen.some((p) => p.phase === "names" && p.done === 1));
+  const locating = seen.filter((p) => p.phase === "locating");
+  assert.deepEqual(locating[0], { phase: "locating", done: 0, total: 4 });
+  assert.deepEqual(locating.at(-1), { phase: "locating", done: 4, total: 4 });
+});
+
+test("progress still finishes when there is nothing to locate", async () => {
+  const { progressPercent } = await import("../src/lib/extract-types.ts");
+  const seen: { phase: string; done: number; total: number }[] = [];
+  await extractPlaces({ entries: [{ url: IG }] }, BASE, deps(), (p) =>
+    seen.push({ ...p }),
+  );
+  assert.equal(progressPercent(seen.at(-1) as never), 100);
+});
+
+test("progress percentages and labels", async () => {
+  const { progressPercent, progressLabel } =
+    await import("../src/lib/extract-types.ts");
+  assert.equal(progressPercent({ phase: "reading", done: 0, total: 4 }), 0);
+  assert.equal(progressPercent({ phase: "reading", done: 4, total: 4 }), 15);
+  assert.equal(progressPercent({ phase: "names", done: 1, total: 1 }), 40);
+  assert.equal(progressPercent({ phase: "locating", done: 5, total: 10 }), 70);
+  assert.equal(
+    progressPercent({ phase: "locating", done: 99, total: 10 }),
+    100,
+    "capped",
+  );
+  assert.equal(
+    progressPercent({ phase: "locating", done: 0, total: 0 }),
+    100,
+    "nothing to do",
+  );
+  assert.equal(
+    progressLabel({ phase: "reading", done: 1, total: 3 }),
+    "Reading post 2 of 3…",
+  );
+  assert.equal(
+    progressLabel({ phase: "names", done: 0, total: 1 }),
+    "Finding place names…",
+  );
+  assert.equal(
+    progressLabel({ phase: "locating", done: 3, total: 9 }),
+    "Locating place 4 of 9…",
+  );
+  assert.equal(
+    progressLabel({ phase: "locating", done: 9, total: 9 }),
+    "Finishing up…",
+  );
+});
+
+test("the stream reader rebuilds lines split across chunks", async () => {
+  const { createLineReader, parseStreamEvent } =
+    await import("../src/lib/extract-types.ts");
+  const reader = createLineReader();
+  const a =
+    '{"type":"progress","progress":{"phase":"reading","done":1,"total":2}}\n{"type":"prog';
+  const b =
+    'ress","progress":{"phase":"names","done":0,"total":1}}\n{"type":"error","message":"x"}';
+  const lines = [...reader.push(a), ...reader.push(b)];
+  assert.equal(lines.length, 2, "the unfinished third line waits");
+  assert.deepEqual(reader.flush().length, 1);
+  assert.deepEqual(parseStreamEvent(lines[0]), {
+    type: "progress",
+    progress: { phase: "reading", done: 1, total: 2 },
+  });
+  assert.deepEqual(parseStreamEvent('{"type":"error","message":"x"}'), {
+    type: "error",
+    message: "x",
+  });
+  assert.equal(parseStreamEvent("not json"), null);
+  assert.equal(
+    parseStreamEvent('{"type":"progress","progress":{"done":"a"}}'),
+    null,
+  );
+  assert.equal(parseStreamEvent('{"type":"mystery"}'), null);
+  assert.deepEqual(createLineReader().flush(), []);
+});
+
+// ---------- the stream the page reads ----------
+
+async function readStream(stream: ReadableStream<Uint8Array>) {
+  const { createLineReader, parseStreamEvent } =
+    await import("../src/lib/extract-types.ts");
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const lines = createLineReader();
+  const events: NonNullable<ReturnType<typeof parseStreamEvent>>[] = [];
+  const take = (line: string) => {
+    const event = parseStreamEvent(line);
+    if (event) events.push(event);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const line of lines.push(decoder.decode(value, { stream: true })))
+      take(line);
+  }
+  for (const line of lines.flush()) take(line);
+  return events;
+}
+
+test("a search streams its progress, then exactly one result", async () => {
+  const { extractStream } = await import("../src/lib/extract-stream.ts");
+  const events = await readStream(
+    extractStream((onProgress) =>
+      extractPlaces(
+        { entries: [post("Din Tai Fung\nYu Garden")] },
+        BASE,
+        deps(),
+        onProgress,
+      ),
+    ),
+  );
+  const kinds = events.map((e) => e.type);
+  assert.equal(kinds.at(-1), "result");
+  assert.equal(kinds.filter((k) => k === "result").length, 1);
+  assert.ok(kinds.filter((k) => k === "progress").length >= 5);
+  const last = events.at(-1);
+  assert.ok(last?.type === "result" && last.data.mentions.length === 2);
+});
+
+test("a search that fails halfway ends with a clear error, not a hang", async () => {
+  const { extractStream } = await import("../src/lib/extract-stream.ts");
+  const events = await readStream(
+    extractStream(async (onProgress) => {
+      onProgress({ phase: "reading", done: 1, total: 2 });
+      throw new Error("secret internal detail");
+    }),
+  );
+  assert.deepEqual(
+    events.map((e) => e.type),
+    ["progress", "error"],
+  );
+  const error = events.at(-1);
+  assert.ok(error?.type === "error");
+  assert.ok(
+    !error.message.includes("secret"),
+    "internal details are not shown",
+  );
+  assert.match(error.message, /Try again/);
+
+  const friendly = await readStream(
+    extractStream(async () => {
+      throw new RoomError(400, "Add at least one post.");
+    }),
+  );
+  const message = friendly.at(-1);
+  assert.ok(
+    message?.type === "error" && message.message === "Add at least one post.",
+  );
 });

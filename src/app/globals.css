@@ -1632,3 +1632,35 @@ summary {
   color: var(--ink);
   font-weight: 700;
 }
+
+/* ---------- Search progress ---------- */
+.form-lock {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+.form-lock:disabled {
+  opacity: 0.65;
+}
+.progress {
+  max-width: 720px;
+}
+.progress-bar {
+  height: 12px;
+  border-radius: 999px;
+  background: #eadfcd;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--teal), var(--accent));
+  transition: width 0.35s ease;
+}
+.progress-label {
+  margin: 8px 0 0;
+  font-weight: 600;
+}
