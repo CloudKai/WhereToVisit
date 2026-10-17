@@ -9,14 +9,26 @@ export const MAX_HINT_LENGTH = 60;
 
 // ---------- screenshots and video frames ----------
 /** Images a person can add to one post (screenshots, or frames from a recording). */
-export const MAX_IMAGES_PER_ENTRY = 6;
-export const MAX_IMAGES_TOTAL = 12;
+export const MAX_IMAGES_PER_ENTRY = 10;
+export const MAX_IMAGES_TOTAL = 14;
 /** Longest side, in pixels, that an image is shrunk to before it is sent. */
 export const IMAGE_MAX_SIDE = 1024;
-/** Largest single image, as a data-URL string (about 300 KB of picture). */
-export const MAX_IMAGE_CHARS = 400_000;
+/** Largest single image, as a data-URL string (about 190 KB of picture). */
+export const MAX_IMAGE_CHARS = 250_000;
 /** Whole request. Kept under the 4.5 MB request limit common to serverless hosts. */
 export const MAX_REQUEST_BYTES = 3_800_000;
+
+// ---------- sound from a screen recording ----------
+/** Only this much of a recording is used, for pictures and for sound. */
+export const MAX_VIDEO_SECONDS = 120;
+export const MAX_SPEECH_SEGMENTS = 150;
+export const MAX_SEGMENT_CHARS = 300;
+export const MAX_SPEECH_CHARS = 5000;
+/** The page makes 16 kHz mono sound: 32 KB a second, so two minutes is under 4 MB. */
+export const AUDIO_SAMPLE_RATE = 16000;
+
+/** One spoken phrase from a recording's sound, and when it starts (seconds). */
+export type SpeechSegment = { start: number; text: string };
 
 const IMAGE_DATA_URL =
   /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
@@ -45,21 +57,43 @@ export type Candidate = {
   category: Category;
 };
 
+/** Where a place name came from. */
+export type NameOrigin = "caption" | "images" | "speech";
+
+/** One place where a name was found: the caption, a picture, or the spoken sound. */
+export type Evidence = {
+  source: NameOrigin;
+  /** Seconds into the recording, when known. */
+  at?: number;
+  /** For pictures without a time: which picture (1 is the first). */
+  frame?: number;
+  /** For speech: the phrase it was heard in. */
+  quote?: string;
+};
+
+/**
+ * "confirmed": found in two different ways (for example heard in the audio and
+ * seen on screen) and matched to one clear place on the map.
+ * "check": anything weaker. The reasons say why.
+ */
+export type Verdict = "confirmed" | "check";
+
 /** A place named in one post, with the map matches found for it. */
 export type Mention = {
   id: string;
-  /** Exactly as it appears in the text or images the person provided. */
+  /** Exactly as it appears in the text, images or speech the person provided. */
   name: string;
-  /** Read from the caption text, or from the screenshots/frames. */
+  /** The first way it was found. */
   origin?: NameOrigin;
   entry: number;
   candidates: Candidate[];
+  evidence: Evidence[];
+  verdict: Verdict;
+  /** Why a place is not confirmed; empty when it is. */
+  reasons: string[];
 };
 
 export type EntryStatus = "ok" | "no-text" | "bad-link" | "no-places";
-
-/** Where a place name came from. */
-export type NameOrigin = "caption" | "images";
 
 export type EntryResult = {
   index: number;
@@ -136,6 +170,8 @@ export type ExtractCapabilities = {
   ai: boolean;
   /** The AI can read screenshots and video frames (needs the same key). */
   images: boolean;
+  /** The sound of a recording can be turned into text (needs the same key). */
+  speech: boolean;
 };
 
 /**

@@ -1766,3 +1766,48 @@ summary {
   line-height: 1;
   cursor: pointer;
 }
+
+/* ---------- evidence and confirmed / needs-check ---------- */
+.verdict {
+  display: inline-block;
+  margin: 2px 0 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.verdict-ok {
+  background: #e3f3ea;
+  color: #14613a;
+}
+.verdict-check {
+  background: #fbf0d8;
+  color: #8a6212;
+}
+.evidence {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  font-size: 0.85rem;
+}
+.evidence-reasons {
+  color: #8a6212;
+}
+.thumbs .thumb-time {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+  font-size: 0.7rem;
+}
+.heard {
+  font-size: 0.85rem;
+}
+.heard ul {
+  margin: 6px 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow: auto;
+}

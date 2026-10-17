@@ -57,10 +57,17 @@ for each day, and let friends vote on it. No accounts.
   read: paste the caption or type place names, and/or **upload screenshots or a
   screen recording** of the post. The AI reads the text visible in the pictures
   (location tags, captions, on-screen titles, signs), Geoapify finds where each
-  place is, and they appear on a map with their source. Recordings are turned into
-  a few still pictures on your own device, so the video itself is never uploaded.
-  You confirm each match, then add places to your trip. A progress bar shows each
-  stage and the form is locked until it finishes.
+  place is, and they appear on a map with their source. A recording (first two
+  minutes) is turned into a few still pictures **and a small audio file on your own
+  device**; the video itself is never uploaded. The audio is turned into timed text
+  (OpenAI speech-to-text) so places that are _said_ are found too.
+  **Every place shows its evidence** (for example "Said at 0:12: …", "Seen on screen
+  at 0:20"). A place is marked **Confirmed** only when it is found in two different
+  ways (caption, on-screen text, audio) _and_ matches one clear, exact place on the
+  map; anything else is **Needs your check**, with the reasons. This is deliberately
+  strict, but no tool can promise 99% for every video: many videos never name the
+  place. You confirm each match, then add places to your trip. A progress bar shows
+  each stage and the form is locked until it finishes.
 
 ### Share
 
@@ -81,10 +88,10 @@ for each day, and let friends vote on it. No accounts.
 - **No ratings or reviews.** No free worldwide source exists. Places without an
   editor recommendation are ordered by how complete their data is, not quality.
 - **Videos are not downloaded or watched.** A link alone cannot be decoded: the
-  platforms forbid other apps from fetching their videos. The app reads only text
-  that is visible in pictures you give it; it does not listen to audio or guess a
-  place from how a scene looks. Pictures and pasted text are sent to OpenAI to be
-  read and are not stored.
+  platforms forbid other apps from fetching their videos. The app reads only names
+  that are written in pictures you give it or said in the audio of a recording you
+  upload; it never guesses a place from how a scene looks. Pictures, audio and
+  pasted text are sent to OpenAI to be read and are not stored.
 - **Social platforms are not read.** Instagram's terms limit its embed data to
   displaying the post, and Xiaohongshu has no API. TikTok captions are read
   automatically only if you set `TIKTOK_OEMBED=1`, which is off by default:
@@ -110,16 +117,16 @@ npm install
 npm run dev                  # http://localhost:3000
 ```
 
-| Variable                                                 | Needed?                                                   | What it does                                                  |
-| -------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------- |
-| `GEOAPIFY_API_KEY`                                       | **Yes**                                                   | Place search, autocomplete, finding places by name            |
-| `ORS_API_KEY`                                            | No                                                        | Road-based travel times and "Shortest route" (else estimates) |
-| `OPENAI_API_KEY`                                         | No                                                        | Condensing notes; finding place names in captions             |
-| `OPENAI_MODEL`, `LLM_DAILY_CAP`                          | No                                                        | Model name and a daily call cap                               |
-| `UPSTASH_REDIS_REST_URL` / `_TOKEN` (or `KV_REST_API_*`) | For voting, shared links and shared caching in production | Shared storage                                                |
-| `COMMUNITY_POSTS`                                        | No                                                        | `0` switches off visitor-shared post links                    |
-| `TIKTOK_OEMBED`                                          | No                                                        | `1` reads TikTok captions automatically (off by default)      |
-| `WIKIMEDIA_CONTACT`                                      | No                                                        | Contact in the user-agent sent to Wikimedia                   |
+| Variable                                                   | Needed?                                                   | What it does                                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------- |
+| `GEOAPIFY_API_KEY`                                         | **Yes**                                                   | Place search, autocomplete, finding places by name            |
+| `ORS_API_KEY`                                              | No                                                        | Road-based travel times and "Shortest route" (else estimates) |
+| `OPENAI_API_KEY`                                           | No                                                        | Condensing notes; finding place names in captions             |
+| `OPENAI_MODEL`, `OPENAI_TRANSCRIBE_MODEL`, `LLM_DAILY_CAP` | No                                                        | Model names (speech-to-text default `whisper-1`), daily cap   |
+| `UPSTASH_REDIS_REST_URL` / `_TOKEN` (or `KV_REST_API_*`)   | For voting, shared links and shared caching in production | Shared storage                                                |
+| `COMMUNITY_POSTS`                                          | No                                                        | `0` switches off visitor-shared post links                    |
+| `TIKTOK_OEMBED`                                            | No                                                        | `1` reads TikTok captions automatically (off by default)      |
+| `WIKIMEDIA_CONTACT`                                        | No                                                        | Contact in the user-agent sent to Wikimedia                   |
 
 Keys are read on the server only and never sent to the browser.
 

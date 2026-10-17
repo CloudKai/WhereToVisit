@@ -20,6 +20,7 @@ const BASE: Config = {
   orsBaseUrl: "https://x",
   orsDailyCap: 1,
   openaiModel: "m",
+  openaiTranscribeModel: "t",
   llmDailyCap: 10,
   communityPosts: true,
   tiktokOembed: false,
@@ -662,7 +663,7 @@ test("only small JPEG, PNG and WebP pictures are accepted", async () => {
 test("image counts and types are bounded before any work is done", async () => {
   const bad = (entries: unknown) => extractPlaces({ entries }, WITH_AI, deps());
   await assert.rejects(
-    bad([{ url: IG, images: Array.from({ length: 7 }, () => PIXEL) }]),
+    bad([{ url: IG, images: Array.from({ length: 11 }, () => PIXEL) }]),
     RoomError,
   );
   await assert.rejects(
@@ -677,7 +678,7 @@ test("image counts and types are bounded before any work is done", async () => {
   await assert.rejects(
     bad(many),
     RoomError,
-    "15 images in total is over the limit of 12",
+    "15 images in total is over the limit of 14",
   );
 });
 
@@ -689,7 +690,10 @@ test("a link plus screenshots finds places with no caption at all", async () => 
     deps({
       vision: async (images) => {
         seen.push(images);
-        return ["Yu Garden", "Din Tai Fung"];
+        return [
+          { name: "Yu Garden", frame: 1 },
+          { name: "Din Tai Fung", frame: 2 },
+        ];
       },
     }),
   );
@@ -716,7 +720,7 @@ test("caption names and image names merge, and a repeated place counts once", as
     WITH_AI,
     deps({
       names: async () => new Map([[0, ["Din Tai Fung"]]]),
-      vision: async () => ["din tai fung", "Yu Garden"],
+      vision: async () => [{ name: "din tai fung" }, { name: "Yu Garden" }],
     }),
   );
   assert.deepEqual(
@@ -736,7 +740,7 @@ test("images are never used without a post link", async () => {
     deps({
       vision: async () => {
         called++;
-        return ["Yu Garden"];
+        return [{ name: "Yu Garden" }];
       },
     }),
   );
@@ -753,7 +757,7 @@ test("without an AI key the images are not used and the person is told", async (
     deps({
       vision: async () => {
         called++;
-        return ["Yu Garden"];
+        return [{ name: "Yu Garden" }];
       },
     }),
   );
@@ -819,7 +823,7 @@ test("progress reports the image stage between reading and names, and ends at 10
     WITH_AI,
     deps({
       names: async () => new Map([[0, ["Yu Garden"]]]),
-      vision: async () => ["Din Tai Fung"],
+      vision: async () => [{ name: "Din Tai Fung" }],
     }),
     (p) => seen.push({ ...p }),
   );

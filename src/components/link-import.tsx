@@ -16,7 +16,9 @@ import {
   type Progress,
   progressLabel,
   progressPercent,
+  type SpeechSegment,
 } from "@/lib/extract-types";
+import { evidenceLabel, formatTime } from "@/lib/evidence";
 import {
   candidateToStop,
   MAX_STOPS_PER_DAY,
@@ -24,7 +26,8 @@ import {
   type Stop,
 } from "@/lib/plan";
 import { parseSocialUrl, PLATFORM_LABEL, type Platform } from "@/lib/social";
-import { filesToImages, MediaError } from "@/lib/media";
+import { MediaError, prepareFiles } from "@/lib/media";
+import { listen } from "@/lib/transcribe-client";
 import { MapCanvas, type MapMarker } from "./map";
 import { usePlan } from "./plan-provider";
 
@@ -33,6 +36,10 @@ type Post = {
   text: string;
   /** Small JPEG pictures made on this device from screenshots or a recording. */
   images: string[];
+  /** The second of the recording each picture was taken at, if it is a video frame. */
+  imageTimes: (number | undefined)[];
+  /** What was said in the recording, as timed text (made from its sound). */
+  speech: SpeechSegment[];
 };
 const STORAGE_KEY = "wtv.links.v1";
 
@@ -52,7 +59,7 @@ type Saved = {
 };
 
 function emptyPost(): Post {
-  return { url: "", text: "", images: [] };
+  return { url: "", text: "", images: [], imageTimes: [], speech: [] };
 }
 
 export function LinkImport() {
@@ -90,6 +97,8 @@ export function LinkImport() {
               url: post.url ?? "",
               text: post.text ?? "",
               images: [],
+              imageTimes: [],
+              speech: [],
             })),
           );
         }
@@ -107,7 +116,12 @@ export function LinkImport() {
     if (!restored) return;
     try {
       const saved: Saved = {
-        posts: posts.map((post) => ({ ...post, images: [] })),
+        posts: posts.map((post) => ({
+          ...post,
+          images: [],
+          imageTimes: [],
+          speech: [],
+        })),
         hint,
         result,
         choice,
@@ -125,10 +139,18 @@ export function LinkImport() {
   }
 
   const [picking, setPicking] = useState<number | null>(null);
+  const [listening, setListening] = useState<number | null>(null);
   const [pickError, setPickError] = useState<{ row: number; text: string }>();
+  const [pickNotes, setPickNotes] = useState<{
+    row: number;
+    lines: string[];
+  }>();
   const totalImages = posts.reduce((n, p) => n + p.images.length, 0);
 
-  /** Turn chosen screenshots or a recording into small pictures, on this device. */
+  /**
+   * Turn chosen screenshots or a recording into small pictures on this device,
+   * and the recording's sound into text. The recording itself is never uploaded.
+   */
   async function addMedia(index: number, files: FileList | null) {
     if (!files || files.length === 0) return;
     const room = Math.min(
@@ -136,6 +158,7 @@ export function LinkImport() {
       MAX_IMAGES_TOTAL - totalImages,
     );
     setPickError(undefined);
+    setPickNotes(undefined);
     if (room <= 0) {
       setPickError({
         row: index,
@@ -144,13 +167,24 @@ export function LinkImport() {
       return;
     }
     setPicking(index);
+    const lines: string[] = [];
+    let prepared: Awaited<ReturnType<typeof prepareFiles>>;
     try {
-      const made = await filesToImages([...files], room);
+      const canListen =
+        Boolean(caps?.speech) && posts[index].speech.length === 0;
+      prepared = await prepareFiles([...files], room, canListen);
       setPosts((current) =>
         current.map((post, i) =>
-          i === index ? { ...post, images: [...post.images, ...made] } : post,
+          i === index
+            ? {
+                ...post,
+                images: [...post.images, ...prepared.images],
+                imageTimes: [...post.imageTimes, ...prepared.times],
+              }
+            : post,
         ),
       );
+      lines.push(...prepared.notes);
     } catch (e) {
       setPickError({
         row: index,
@@ -159,18 +193,66 @@ export function LinkImport() {
             ? e.message
             : "Those files couldn’t be prepared. Try screenshots saved as PNG or JPEG.",
       });
-    } finally {
       setPicking(null);
+      return;
     }
+    setPicking(null);
+
+    if (prepared.audio) {
+      setListening(index);
+      try {
+        const segments = await listen(prepared.audio.wav);
+        if (segments.length === 0) {
+          lines.push(`No speech was heard in “${prepared.audio.name}”.`);
+        } else {
+          update(index, { speech: segments });
+        }
+      } catch (e) {
+        lines.push(
+          `${e instanceof Error ? e.message : "Couldn’t listen to the audio."} The pictures were still added.`,
+        );
+      } finally {
+        setListening(null);
+      }
+    } else if (
+      caps &&
+      !caps.speech &&
+      [...files].some((f) => f.type.startsWith("video/"))
+    ) {
+      lines.push("Listening to a recording needs an OpenAI key on this site.");
+    }
+    if (lines.length > 0) setPickNotes({ row: index, lines });
+  }
+
+  function removeImage(index: number, at: number) {
+    setPosts((current) =>
+      current.map((post, i) =>
+        i === index
+          ? {
+              ...post,
+              images: post.images.filter((_, j) => j !== at),
+              imageTimes: post.imageTimes.filter((_, j) => j !== at),
+            }
+          : post,
+      ),
+    );
   }
 
   const filled = posts.filter(
-    (p) => p.url.trim() || p.text.trim() || p.images.length > 0,
+    (p) =>
+      p.url.trim() ||
+      p.text.trim() ||
+      p.images.length > 0 ||
+      p.speech.length > 0,
   );
   // Every post needs a valid link; the caption is optional.
   const missingLink = filled.some((p) => !parseSocialUrl(p.url));
   const canSubmit =
-    filled.length > 0 && !missingLink && !busy && picking === null;
+    filled.length > 0 &&
+    !missingLink &&
+    !busy &&
+    picking === null &&
+    listening === null;
 
   async function find(event: React.FormEvent) {
     event.preventDefault();
@@ -273,7 +355,7 @@ export function LinkImport() {
 
   const pins = useMemo(() => {
     const seen = new Set<string>();
-    const out: (MapMarker & { stop: Stop })[] = [];
+    const out: (MapMarker & { stop: Stop; confirmed: boolean })[] = [];
     mentions.forEach((m) => {
       const c = chosen(m);
       const stop = c ? candidateToStop(c) : null;
@@ -288,6 +370,7 @@ export function LinkImport() {
         badge: String(out.length + 1),
         group: PLATFORM_GROUP[entries[m.entry]?.source?.platform ?? "text"],
         stop,
+        confirmed: m.verdict === "confirmed",
       });
     });
     return out;
@@ -303,8 +386,11 @@ export function LinkImport() {
     MAX_STOPS_PER_DAY - (plan.days[activeDay]?.stops.length ?? 0),
   );
 
-  function addAll() {
-    for (const pin of addable.slice(0, room))
+  const addableConfirmed = addable.filter((p) => p.confirmed);
+
+  function addAll(onlyConfirmed: boolean) {
+    const list = onlyConfirmed ? addableConfirmed : addable;
+    for (const pin of list.slice(0, room))
       add(pin.stop, hint.trim() || undefined);
   }
 
@@ -348,10 +434,9 @@ export function LinkImport() {
               ? parseSocialUrl(post.url)?.platform
               : undefined;
             const bad = post.url.trim() && !platform;
-            const noLink =
-              !post.url.trim() && (post.text.trim() || post.images.length > 0);
-            const noCaption =
-              platform && !post.text.trim() && post.images.length === 0;
+            const hasMedia = post.images.length > 0 || post.speech.length > 0;
+            const noLink = !post.url.trim() && (post.text.trim() || hasMedia);
+            const noCaption = platform && !post.text.trim() && !hasMedia;
             return (
               // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and have no identity
               <fieldset className="post-row" key={index}>
@@ -373,7 +458,7 @@ export function LinkImport() {
                   placeholder="Link to the post (required)"
                   value={post.url}
                   maxLength={300}
-                  required={Boolean(post.text.trim() || post.images.length > 0)}
+                  required={Boolean(post.text.trim() || hasMedia)}
                   aria-invalid={bad || noLink ? "true" : undefined}
                   onChange={(event) =>
                     update(index, { url: event.target.value })
@@ -408,15 +493,17 @@ export function LinkImport() {
                   <label className="button secondary media-button">
                     {picking === index
                       ? "Preparing pictures…"
-                      : post.images.length > 0
-                        ? "+ Add more screenshots"
-                        : "+ Upload screenshots or a screen recording"}
+                      : listening === index
+                        ? "Listening to the audio…"
+                        : post.images.length > 0
+                          ? "+ Add more screenshots or a recording"
+                          : "+ Upload screenshots or a screen recording"}
                     <input
                       type="file"
                       accept="image/*,video/*"
                       multiple
                       className="visually-hidden"
-                      disabled={picking !== null || busy}
+                      disabled={picking !== null || listening !== null || busy}
                       onChange={(event) => {
                         void addMedia(index, event.target.files);
                         event.target.value = "";
@@ -436,14 +523,15 @@ export function LinkImport() {
                             src={src}
                             alt={`Picture ${i + 1} for post ${index + 1}`}
                           />
+                          {post.imageTimes[i] !== undefined && (
+                            <span className="thumb-time">
+                              {formatTime(post.imageTimes[i] as number)}
+                            </span>
+                          )}
                           <button
                             type="button"
                             aria-label={`Remove picture ${i + 1} from post ${index + 1}`}
-                            onClick={() =>
-                              update(index, {
-                                images: post.images.filter((_, j) => j !== i),
-                              })
-                            }
+                            onClick={() => removeImage(index, i)}
                           >
                             ×
                           </button>
@@ -452,6 +540,36 @@ export function LinkImport() {
                     </ul>
                   )}
                 </div>
+                {post.speech.length > 0 && (
+                  <details className="heard">
+                    <summary>
+                      Heard {post.speech.length}{" "}
+                      {post.speech.length === 1 ? "phrase" : "phrases"} in the
+                      recording
+                    </summary>
+                    <ul>
+                      {post.speech.map((line) => (
+                        <li key={`${line.start}-${line.text}`}>
+                          <span className="hint">{formatTime(line.start)}</span>{" "}
+                          {line.text}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => update(index, { speech: [] })}
+                    >
+                      Don’t use the audio
+                    </button>
+                  </details>
+                )}
+                {pickNotes?.row === index &&
+                  pickNotes.lines.map((line) => (
+                    <p key={line} className="hint" role="status">
+                      {line}
+                    </p>
+                  ))}
                 {pickError?.row === index && (
                   <p className="hint form-error" role="alert">
                     {pickError.text}
@@ -539,13 +657,19 @@ export function LinkImport() {
           </div>
         )}
         <p className="hint">
-          Screenshots and recordings are shrunk on your device (a recording is
-          never uploaded — only a few still pictures from it). The pictures and
-          any text you paste are sent to OpenAI to read, and the place names are
-          looked up with Geoapify. Nothing is stored. Crop out anything private,
-          such as notifications. We read only the text visible in the pictures;
-          we don’t listen to audio or guess places from how a scene looks. Links
-          are never opened by us.
+          Screenshots and recordings are processed on your device. A recording
+          is never uploaded: only a few still pictures from its first two
+          minutes, and its sound as a small audio file, are sent to OpenAI to
+          read and to turn into text. Place names are looked up with Geoapify.
+          Nothing is stored. Crop out anything private, such as notifications.
+          We read only names that are written on screen or said out loud, and
+          never guess a place from how a scene looks. A place is marked{" "}
+          <strong>Confirmed</strong> only when it is found in two different ways
+          (for example said in the audio and seen on screen) and matches one
+          clear place on the map; everything else is marked{" "}
+          <strong>Needs your check</strong>. No tool can be 99% sure for every
+          video, so check the evidence shown for each place. Links are never
+          opened by us.
         </p>
         {error && (
           <p className="notice" role="alert">
@@ -596,13 +720,25 @@ export function LinkImport() {
                 <button
                   type="button"
                   className="button"
-                  onClick={addAll}
-                  disabled={addable.length === 0 || room === 0 || tripFull}
+                  onClick={() => addAll(true)}
+                  disabled={
+                    addableConfirmed.length === 0 || room === 0 || tripFull
+                  }
                 >
                   {addable.length === 0
                     ? "All added to your trip"
-                    : `Add ${Math.min(addable.length, room)} to ${plan.days.length > 1 ? `Day ${activeDay + 1}` : "my trip"}`}
+                    : `Add ${Math.min(addableConfirmed.length, room)} confirmed to ${plan.days.length > 1 ? `Day ${activeDay + 1}` : "my trip"}`}
                 </button>
+                {addable.length > addableConfirmed.length && (
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => addAll(false)}
+                    disabled={room === 0 || tripFull}
+                  >
+                    Add all {Math.min(addable.length, room)} anyway
+                  </button>
+                )}
                 {hydrated && stopCount(plan) > 0 && (
                   <Link className="button secondary" href="/plan">
                     View your trip ({stopCount(plan)})
@@ -651,10 +787,34 @@ export function LinkImport() {
                           </span>
                           <div className="stop-main">
                             <h3>{m.name}</h3>
+                            <p
+                              className={
+                                m.verdict === "confirmed"
+                                  ? "verdict verdict-ok"
+                                  : "verdict verdict-check"
+                              }
+                            >
+                              {m.verdict === "confirmed"
+                                ? "✓ Confirmed"
+                                : "Needs your check"}
+                            </p>
+                            <ul className="evidence">
+                              {m.evidence.map((item) => (
+                                <li
+                                  key={`${item.source}-${item.at ?? item.frame ?? ""}-${item.quote ?? ""}`}
+                                >
+                                  {evidenceLabel(item)}
+                                </li>
+                              ))}
+                            </ul>
+                            {m.reasons.length > 0 && (
+                              <ul className="evidence evidence-reasons">
+                                {m.reasons.map((reason) => (
+                                  <li key={reason}>{reason}</li>
+                                ))}
+                              </ul>
+                            )}
                             <p className="hint">
-                              {m.origin === "images" && (
-                                <>Read from your pictures by AI — check it. </>
-                              )}
                               {source ? (
                                 <>
                                   From{" "}

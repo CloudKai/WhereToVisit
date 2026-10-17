@@ -1,4 +1,10 @@
-import { IMAGE_MAX_SIDE, MAX_IMAGE_CHARS } from "./extract-types.ts";
+import {
+  AUDIO_SAMPLE_RATE,
+  IMAGE_MAX_SIDE,
+  MAX_IMAGE_CHARS,
+  MAX_VIDEO_SECONDS,
+} from "./extract-types.ts";
+import { formatTime } from "./evidence.ts";
 
 /** Scales a size down so its longest side is at most `max`; never scales up. */
 export function fitSize(
@@ -32,10 +38,71 @@ const round = (n: number) => Math.round(n * 100) / 100;
 
 export const MAX_IMAGE_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_VIDEO_FILE_BYTES = 400 * 1024 * 1024;
+/** Sound is decoded in memory, so only recordings up to this size are listened to. */
+export const MAX_AUDIO_SOURCE_BYTES = 150 * 1024 * 1024;
 /** Pictures taken from one screen recording. */
-export const FRAMES_PER_VIDEO = 6;
+export const FRAMES_PER_VIDEO = 8;
+/** Quieter than this (average level, 0 to 1) is treated as silence. */
+export const SILENCE_LEVEL = 0.003;
 
 export class MediaError extends Error {}
+
+// ---------- sound (pure helpers) ----------
+
+/** Average loudness from 0 (silent) to 1 (full scale). */
+export function loudness(samples: Float32Array): number {
+  if (samples.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / samples.length);
+}
+
+/** Packs mono samples (-1 to 1) into a 16-bit WAV file. */
+export function encodeWav(
+  samples: Float32Array,
+  sampleRate: number = AUDIO_SAMPLE_RATE,
+): Uint8Array {
+  const bytes = new Uint8Array(44 + samples.length * 2);
+  const view = new DataView(bytes.buffer);
+  const text = (at: number, value: string) => {
+    for (let i = 0; i < value.length; i++)
+      view.setUint8(at + i, value.charCodeAt(i));
+  };
+  text(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // plain PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(
+      44 + i * 2,
+      Math.round(clamped * (clamped < 0 ? 0x8000 : 0x7fff)),
+      true,
+    );
+  }
+  return bytes;
+}
+
+/** The part of a recording that is used: at most the first two minutes. */
+export function usedSeconds(duration: number): {
+  seconds: number;
+  truncated: boolean;
+} {
+  const d = Number.isFinite(duration) && duration > 0 ? duration : 0;
+  return {
+    seconds: Math.min(d, MAX_VIDEO_SECONDS),
+    truncated: d > MAX_VIDEO_SECONDS + 0.5,
+  };
+}
 
 // ---------- browser-only below: needs a canvas ----------
 
@@ -133,11 +200,68 @@ function waitFor(
   });
 }
 
-/** Takes evenly spaced pictures from a video, on this device. The video is never uploaded. */
-export async function videoToFrames(
+type AudioWindow = Window &
+  typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+
+/**
+ * The sound of a recording as a small mono WAV (first two minutes), made on
+ * this device. Null, with the reason, when there is nothing to listen to.
+ */
+async function videoToAudio(
   file: File,
-  count = FRAMES_PER_VIDEO,
-): Promise<string[]> {
+  seconds: number,
+): Promise<{ wav: Uint8Array } | { reason: string }> {
+  if (file.size > MAX_AUDIO_SOURCE_BYTES) {
+    return {
+      reason: `“${file.name}” is too large (over 150 MB) to listen to here, so only its pictures are used.`,
+    };
+  }
+  const w = window as AudioWindow;
+  const Ctx = w.AudioContext ?? w.webkitAudioContext;
+  if (!Ctx || typeof OfflineAudioContext === "undefined") {
+    return {
+      reason: "This browser can’t read sound from a recording here.",
+    };
+  }
+  const context = new Ctx();
+  try {
+    const decoded = await context.decodeAudioData(await file.arrayBuffer());
+    const length = Math.max(
+      1,
+      Math.ceil(Math.min(seconds, decoded.duration) * AUDIO_SAMPLE_RATE),
+    );
+    // Rendering through an offline context mixes to mono and resamples.
+    const offline = new OfflineAudioContext(1, length, AUDIO_SAMPLE_RATE);
+    const source = offline.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offline.destination);
+    source.start();
+    const samples = (await offline.startRendering()).getChannelData(0);
+    if (loudness(samples) < SILENCE_LEVEL) {
+      return {
+        reason: `“${file.name}” has no audible speech, so only its pictures are used.`,
+      };
+    }
+    return { wav: encodeWav(samples) };
+  } catch {
+    return {
+      reason: `The sound in “${file.name}” couldn’t be read in this browser, so only its pictures are used.`,
+    };
+  } finally {
+    void context.close().catch(() => undefined);
+  }
+}
+
+/** Pictures (with the second each was taken) from the first two minutes of a video. */
+async function videoToFrames(
+  file: File,
+  count: number,
+): Promise<{
+  frames: string[];
+  times: number[];
+  seconds: number;
+  truncated: boolean;
+}> {
   if (file.size > MAX_VIDEO_FILE_BYTES) {
     throw new MediaError(`“${file.name}” is too large (over 400 MB).`);
   }
@@ -154,8 +278,10 @@ export async function videoToFrames(
         "This browser can’t read that video. Try screenshots instead.",
       );
     }
+    const { seconds, truncated } = usedSeconds(video.duration);
+    const times = evenTimes(seconds, count);
     const frames: string[] = [];
-    for (const time of evenTimes(video.duration, count)) {
+    for (const time of times) {
       const seeked = waitFor(video, "seeked", 8000);
       video.currentTime = time;
       await seeked;
@@ -167,7 +293,7 @@ export async function videoToFrames(
         ),
       );
     }
-    return frames;
+    return { frames, times, seconds, truncated };
   } finally {
     URL.revokeObjectURL(url);
     video.removeAttribute("src");
@@ -175,26 +301,61 @@ export async function videoToFrames(
   }
 }
 
-/** Turns picked files into pictures: images directly, videos as several frames. */
-export async function filesToImages(
+/** What picked files turned into, all made on this device. */
+export type PreparedMedia = {
+  images: string[];
+  /** The second each image was taken at; undefined for a screenshot. */
+  times: (number | undefined)[];
+  /** Sound from the first video that has any, ready to be turned into text. */
+  audio?: { wav: Uint8Array; name: string };
+  notes: string[];
+};
+
+/**
+ * Turns picked files into pictures (images directly, videos as several frames
+ * with their times) and, for a video with sound, a small audio file. Videos are
+ * never uploaded.
+ */
+export async function prepareFiles(
   files: File[],
   room: number,
-): Promise<string[]> {
-  const out: string[] = [];
+  wantAudio: boolean,
+): Promise<PreparedMedia> {
+  const out: PreparedMedia = { images: [], times: [], notes: [] };
   for (const file of files) {
-    if (out.length >= room) break;
+    const left = room - out.images.length;
+    if (left <= 0) break;
     if (file.type.startsWith("video/")) {
-      out.push(
-        ...(await videoToFrames(
-          file,
-          Math.min(FRAMES_PER_VIDEO, room - out.length),
-        )),
+      const { frames, times, seconds, truncated } = await videoToFrames(
+        file,
+        Math.min(FRAMES_PER_VIDEO, left),
       );
+      out.images.push(...frames);
+      out.times.push(...times);
+      if (truncated) {
+        out.notes.push(
+          `“${file.name}” is longer than ${formatTime(MAX_VIDEO_SECONDS)}, so only the first ${formatTime(MAX_VIDEO_SECONDS)} is used.`,
+        );
+      }
+      if (wantAudio) {
+        if (out.audio) {
+          out.notes.push(
+            `Only the sound of the first video is used; “${file.name}” adds pictures only.`,
+          );
+        } else {
+          const heard = await videoToAudio(file, seconds);
+          if ("wav" in heard) out.audio = { wav: heard.wav, name: file.name };
+          else out.notes.push(heard.reason);
+        }
+      }
     } else if (file.type.startsWith("image/")) {
-      out.push(await imageToDataUrl(file));
+      out.images.push(await imageToDataUrl(file));
+      out.times.push(undefined);
     } else {
       throw new MediaError(`“${file.name}” isn’t a picture or a video.`);
     }
   }
-  return out.slice(0, room);
+  out.images = out.images.slice(0, room);
+  out.times = out.times.slice(0, room);
+  return out;
 }

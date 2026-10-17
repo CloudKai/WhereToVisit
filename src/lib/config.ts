@@ -18,6 +18,8 @@ export type Config = {
   redisToken?: string;
   openaiKey?: string;
   openaiModel: string;
+  /** Speech-to-text model for the sound of a recording. */
+  openaiTranscribeModel: string;
   llmDailyCap: number;
   wikimediaContact?: string;
   /** Visitors may share TikTok/Instagram/Xiaohongshu post links for places. */
@@ -51,6 +53,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): Config {
       clean(env.UPSTASH_REDIS_REST_TOKEN) ?? clean(env.KV_REST_API_TOKEN),
     openaiKey: clean(env.OPENAI_API_KEY),
     openaiModel: clean(env.OPENAI_MODEL) ?? "gpt-5.4-mini",
+    openaiTranscribeModel: clean(env.OPENAI_TRANSCRIBE_MODEL) ?? "whisper-1",
     llmDailyCap: Number.isFinite(cap) && cap >= 0 ? cap : 150,
     wikimediaContact: clean(env.WIKIMEDIA_CONTACT),
     tiktokOembed: ["1", "true", "on"].includes(

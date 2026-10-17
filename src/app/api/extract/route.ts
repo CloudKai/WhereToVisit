@@ -22,6 +22,7 @@ export async function GET() {
     tiktokCaptions: config.tiktokOembed,
     ai: Boolean(config.openaiKey),
     images: Boolean(config.openaiKey),
+    speech: Boolean(config.openaiKey),
   };
   return json(capabilities);
 }

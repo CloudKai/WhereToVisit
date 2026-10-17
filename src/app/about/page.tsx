@@ -90,11 +90,15 @@ export default function About() {
         needs its link, which is kept as your source. To find places, you also
         paste the caption, type the place names, or upload screenshots or a
         screen recording of the post. AI reads the text that is visible in those
-        pictures — location tags, captions, signs — and picks out place names;
-        it does not listen to audio or guess places from how a scene looks. Then
-        we look up where each place is. Matches can be wrong, so you confirm
-        each one before it goes into your trip. Your pictures and text are sent
-        to OpenAI and place names to Geoapify, and nothing is stored.
+        pictures — location tags, captions, signs — and, for a recording, the
+        words said out loud, and picks out place names. It never guesses a place
+        from how a scene looks. Then we look up where each place is. A place is
+        marked “Confirmed” only when it is found in two different ways (for
+        example said and shown) and matches one clear place on the map;
+        otherwise it says “Needs your check” and shows why. Matches can be
+        wrong, so you confirm each one before it goes into your trip. Your
+        pictures, audio and text are sent to OpenAI and place names to Geoapify,
+        and nothing is stored.
       </p>
 
       <h2>Photos</h2>
