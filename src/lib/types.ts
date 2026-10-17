@@ -1,4 +1,13 @@
-export type Category = "cafe" | "food";
+export type Category =
+  "cafe" | "food" | "shopping" | "attraction" | "museum" | "park";
+
+/** A map rectangle. Never crosses the antimeridian. */
+export type Bounds = {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+};
 
 export type Destination = {
   name: string;
@@ -7,6 +16,8 @@ export type Destination = {
   lon: number;
   /** Search radius in metres around the destination centre. */
   radiusM: number;
+  /** When set, only places inside this rectangle count ("Search this area"). */
+  bounds?: Bounds;
 };
 
 export type Source = {
@@ -20,6 +31,11 @@ export type Photo = {
   url: string;
   pageUrl: string;
   credit: string;
+  /**
+   * "place": tied to this place (its own Wikidata/Wikivoyage image).
+   * "nearby": a Commons photo taken at this spot; shown with a clear label.
+   */
+  kind?: "place" | "nearby";
 };
 
 /**
@@ -55,6 +71,8 @@ export type Place = {
   website?: string;
   reason: Reason;
   photo?: Photo;
+  /** Wikidata item, used to look up a photo. */
+  wikidata?: string;
   sources: Source[];
   /** "editor" places have a travel-editor recommendation; "nearby" do not. */
   tier: "editor" | "nearby";

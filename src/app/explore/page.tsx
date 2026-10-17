@@ -1,16 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PlaceCard } from "@/components/place-card";
+import { ExploreResults } from "@/components/explore-results";
 import { SearchBox } from "@/components/search-box";
 import { ConfigError } from "@/lib/config";
-import {
-  type CategoryFilter,
-  exploreHref,
-  parseDestination,
-  parseFilter,
-} from "@/lib/destination";
+import { failureReason } from "@/lib/http";
+import { exploreHref, parseDestination, parseFilter } from "@/lib/destination";
 import { explore } from "@/lib/explore";
-import type { Place } from "@/lib/types";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -22,21 +17,9 @@ export async function generateMetadata({
   const destination = parseDestination(await searchParams);
   return {
     title: destination
-      ? `Where to eat in ${destination.name} — WhereToVisit`
+      ? `Things to do and eat in ${destination.name} — WhereToVisit`
       : "Explore — WhereToVisit",
   };
-}
-
-const FILTERS: [CategoryFilter, string][] = [
-  ["all", "All"],
-  ["cafe", "Cafés"],
-  ["food", "Restaurants"],
-];
-
-function applyFilter(places: Place[], filter: CategoryFilter): Place[] {
-  return filter === "all"
-    ? places
-    : places.filter((p) => p.category === filter);
 }
 
 function Problem({
@@ -90,6 +73,31 @@ export default async function Explore({
     console.warn(
       `[explore] failed: ${error instanceof Error ? error.message : "error"}`,
     );
+    const reason = failureReason(error);
+    if (reason === "key-rejected" || reason === "quota") {
+      return (
+        <Problem
+          title={
+            reason === "key-rejected"
+              ? "The place-data key was rejected"
+              : "Today’s place-data limit has been reached"
+          }
+        >
+          <p>
+            {reason === "key-rejected" ? (
+              <>
+                Geoapify refused the key in <code>GEOAPIFY_API_KEY</code>. Check
+                that it is copied exactly (no quotes or spaces) and restart the
+                server. In development, open <code>/api/status</code> to test
+                it.
+              </>
+            ) : (
+              <>The free daily allowance is used up. Try again tomorrow.</>
+            )}
+          </p>
+        </Problem>
+      );
+    }
     return (
       <Problem title="We couldn’t load places right now">
         <p>
@@ -101,88 +109,14 @@ export default async function Explore({
     );
   }
 
-  const picks = applyFilter(result.editorPicks, filter);
-  const nearby = applyFilter(result.nearby, filter);
-  const place = destination.country
-    ? `${destination.name}, ${destination.country}`
-    : destination.name;
-
   return (
-    <div className="page-section">
-      <header className="explore-head">
-        <p className="eyebrow">Eat &amp; drink in</p>
-        <h1>{place}</h1>
-        <p className="lead">
-          {result.editorPicks.length > 0
-            ? `${result.editorPicks.length} places recommended by travel editors, plus ${result.nearby.length} more nearby.`
-            : `${result.nearby.length} places found nearby.`}
-        </p>
-        <nav className="filters" aria-label="Filter by type">
-          {FILTERS.map(([value, label]) => (
-            <Link
-              key={value}
-              href={exploreHref(destination, value)}
-              aria-current={filter === value ? "true" : undefined}
-              className={filter === value ? "chip active" : "chip"}
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
-      </header>
-
-      {result.notes.map((note) => (
-        <p key={note} className="notice" role="status">
-          {note}
-        </p>
-      ))}
-
-      {picks.length > 0 && (
-        <section aria-labelledby="picks-heading">
-          <h2 id="picks-heading">Recommended by travel editors</h2>
-          <p className="section-note">
-            Written by Wikivoyage contributors. Each card links to its source.
-            {result.aiUsed &&
-              " Some long notes are condensed by AI using only the source text; the full note is always one click away."}
-          </p>
-          <div className="grid">
-            {picks.map((p) => (
-              <PlaceCard key={p.id} place={p} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {nearby.length > 0 && (
-        <section aria-labelledby="nearby-heading" className="nearby">
-          <details open={picks.length === 0}>
-            <summary id="nearby-heading">
-              {picks.length > 0
-                ? `More places nearby (${nearby.length})`
-                : `Places nearby (${nearby.length})`}
-            </summary>
-            <p className="section-note">
-              From OpenStreetMap. These have no editor recommendation, so they
-              are ordered by how complete their information is — not by quality.
-            </p>
-            <div className="grid">
-              {nearby.map((p) => (
-                <PlaceCard key={p.id} place={p} />
-              ))}
-            </div>
-          </details>
-        </section>
-      )}
-
-      {picks.length === 0 && nearby.length === 0 && (
-        <section className="empty" role="status">
-          <h2>Nothing found for this filter</h2>
-          <p>
-            Try <Link href={exploreHref(destination, "all")}>all types</Link>,
-            or search a nearby larger area.
-          </p>
-        </section>
-      )}
-    </div>
+    <ExploreResults
+      destination={destination}
+      editorPicks={result.editorPicks}
+      nearby={result.nearby}
+      notes={result.notes}
+      aiUsed={result.aiUsed}
+      initialFilter={filter}
+    />
   );
 }
