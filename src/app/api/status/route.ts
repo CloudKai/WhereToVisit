@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
-import { CATEGORIES, CATEGORY_INFO } from "@/lib/categories";
+import { CATEGORIES } from "@/lib/categories";
+import { placesRequestUrl } from "@/lib/geoapify";
+import { readErrorDetail } from "@/lib/http";
 import { storageMode } from "@/lib/store";
 
 /**
@@ -58,28 +60,67 @@ export async function GET() {
         detail: "GEOAPIFY_API_KEY is not set in .env.local",
       };
 
-  // Each of our place types is a separate Geoapify request; test them one by one.
+  // Run the exact requests a real search makes (same address, same size, three
+  // at a time) for Shanghai, and say how long each took and what went wrong.
   if (config.geoapifyKey) {
-    const key = encodeURIComponent(config.geoapifyKey);
-    const rows = await Promise.all(
-      CATEGORIES.map(async (category) => {
-        const groups = CATEGORY_INFO[category].geoapify.join(",");
-        const check = await probe(
-          () =>
-            fetch(
-              `https://api.geoapify.com/v2/places?categories=${encodeURIComponent(groups)}&filter=circle:121.4737,31.2304,3000&limit=1&apiKey=${key}`,
-              { signal: timeout(), cache: "no-store" },
-            ),
-          "accepted",
-        );
+    const key = config.geoapifyKey;
+    const where = { lat: 31.2304, lon: 121.4737, radiusM: 5000 };
+    const one = async (category: (typeof CATEGORIES)[number]) => {
+      const started = Date.now();
+      try {
+        const response = await fetch(placesRequestUrl(where, key, category), {
+          signal: AbortSignal.timeout(25000),
+          cache: "no-store",
+        });
+        const ms = Date.now() - started;
+        if (response.ok) {
+          const data = (await response.json()) as { features?: unknown[] };
+          return [
+            category,
+            {
+              configured: true,
+              ok: true,
+              detail: `${data.features?.length ?? 0} places in ${ms} ms`,
+            },
+          ] as const;
+        }
+        const said = await readErrorDetail(response);
         return [
           category,
-          { configured: true, ...check, detail: `${groups}: ${check.detail}` },
+          {
+            configured: true,
+            ok: false,
+            detail: `HTTP ${response.status} after ${ms} ms${said ? ` — Geoapify said: ${said}` : ""}`,
+          },
         ] as const;
-      }),
-    );
-    for (const [category, check] of rows)
-      result[`geoapify · ${category}`] = check;
+      } catch (error) {
+        return [
+          category,
+          {
+            configured: true,
+            ok: false,
+            detail: `${error instanceof Error ? error.message : "failed"} after ${Date.now() - started} ms (a timeout here would explain "could not be loaded")`,
+          },
+        ] as const;
+      }
+    };
+    const started = Date.now();
+    const rows: (readonly [(typeof CATEGORIES)[number], Check])[] = [];
+    for (let i = 0; i < CATEGORIES.length; i += 3) {
+      rows.push(...(await Promise.all(CATEGORIES.slice(i, i + 3).map(one))));
+    }
+    for (const [category, check] of rows) {
+      result[`real search · ${category}`] = check;
+    }
+    const failed = rows.filter(([, c]) => !c.ok).length;
+    result["real search · summary"] = {
+      configured: true,
+      ok: failed === 0,
+      detail:
+        failed === 0
+          ? `all ${rows.length} place requests worked, ${Date.now() - started} ms in total`
+          : `${failed} of ${rows.length} place requests failed — see the lines above`,
+    };
   }
 
   // "From links" looks place names up with Geoapify's geocoder, a different endpoint.

@@ -129,7 +129,10 @@ Keys are read on the server only and never sent to the browser.
 2. In development open [`/api/status`](http://localhost:3000/api/status). It tests
    every service the app uses, including each of the six place types, and says
    which one fails and why (for example "key was rejected"). It never shows keys
-   and is disabled in production.
+   and is disabled in production. The "real search" lines run the same request
+   a city search makes and print timings plus Geoapify's own error message, so a
+   rate limit or timeout shows up there. Searches send at most 3 place requests
+   at once and retry once on a rate limit, server error or timeout.
 3. Things not yet verified against the real packages: the `maplibre-gl` version
    range in `package.json`, the OpenRouteService URL paths, the exact Geoapify and
    OpenAI response fields, and the `./file.ts` import style under the bundler.

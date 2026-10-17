@@ -2,7 +2,7 @@ import { ConfigError, getConfig } from "./config.ts";
 import { inBounds } from "./geo.ts";
 import { addPhotos } from "./images.ts";
 import { fetchOsmPlaces } from "./geoapify.ts";
-import { failureReason, TtlCache, withTimeout } from "./http.ts";
+import { failureReason, TtlCache, UpstreamError, withTimeout } from "./http.ts";
 import { polishPlaces } from "./llm.ts";
 import { capPerType, foodCount, MIN_FOOD_PLACES } from "./listing.ts";
 import { mergePlaces } from "./merge.ts";
@@ -194,10 +194,14 @@ export async function explore(
   if (osm.status === "rejected") {
     console.warn(`[explore] Geoapify failed: ${describe(osm.reason)}`);
     const why = failureReason(osm.reason);
+    const said =
+      osm.reason instanceof UpstreamError && osm.reason.detail
+        ? ` Geoapify said: “${osm.reason.detail}”.`
+        : "";
     const hint =
       process.env.NODE_ENV === "production"
         ? ""
-        : " (Development: open /api/status to see exactly which request fails.)";
+        : ` (Development:${said} Open /api/status to test the same requests.)`;
     notes.push(
       why === "key-rejected"
         ? `The map-data key was rejected, so only travel-editor picks are shown. The site owner should check GEOAPIFY_API_KEY.${hint}`

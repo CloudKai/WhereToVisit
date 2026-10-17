@@ -3,17 +3,71 @@ type CachedInit = RequestInit & { next?: { revalidate: number } };
 export class UpstreamError extends Error {
   readonly service: string;
   readonly status?: number;
-  constructor(service: string, message: string, status?: number) {
+  /** What the service said was wrong, with any key removed. */
+  readonly detail?: string;
+  constructor(
+    service: string,
+    message: string,
+    status?: number,
+    detail?: string,
+  ) {
     super(`${service}: ${message}`);
     this.name = "UpstreamError";
     this.service = service;
     this.status = status;
+    this.detail = detail;
   }
 }
 
+/** Removes anything that looks like a key or token before text is logged or shown. */
+export function redactSecrets(text: string): string {
+  return text
+    .replace(/(api[_-]?key|key|token|authorization)=([^&\s"']+)/gi, "$1=***")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, "Bearer ***")
+    .replace(/\b(sk-[A-Za-z0-9_-]{8,}|[A-Fa-f0-9]{32,})\b/g, "***");
+}
+
+/** The useful sentence from an error reply, short and safe to show. */
+export async function readErrorDetail(
+  response: Response,
+): Promise<string | undefined> {
+  try {
+    const text = (await response.text()).trim();
+    if (!text) return undefined;
+    let message = text;
+    try {
+      const json = JSON.parse(text) as { message?: unknown; error?: unknown };
+      const found = json.message ?? json.error;
+      if (typeof found === "string") message = found;
+      else if (
+        found &&
+        typeof (found as { message?: unknown }).message === "string"
+      ) {
+        message = (found as { message: string }).message;
+      }
+    } catch {
+      // not JSON: use the raw text
+    }
+    return redactSecrets(message).replace(/\s+/g, " ").slice(0, 240);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Failures that are worth one more try: slow or dropped connections, rate limits, server errors. */
+export function isRetryable(error: unknown): boolean {
+  if (!(error instanceof UpstreamError)) return false;
+  return (
+    error.status === undefined || error.status === 429 || error.status >= 500
+  );
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * GET JSON with a hard timeout. `revalidate` (seconds) uses Next's server
- * data cache so repeated searches do not spend free-tier quota.
+ * data cache so repeated searches do not spend free-tier quota. With
+ * `retries`, rate-limit, server and connection failures are tried again.
  */
 export async function getJson<T>(
   service: string,
@@ -22,7 +76,29 @@ export async function getJson<T>(
     headers?: Record<string, string>;
     revalidate?: number;
     timeoutMs?: number;
+    retries?: number;
+    retryDelayMs?: number;
   } = {},
+): Promise<T> {
+  const retries = Math.max(0, options.retries ?? 0);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await getJsonOnce<T>(service, url, options);
+    } catch (error) {
+      if (attempt >= retries || !isRetryable(error)) throw error;
+      await sleep((options.retryDelayMs ?? 700) * (attempt + 1));
+    }
+  }
+}
+
+async function getJsonOnce<T>(
+  service: string,
+  url: string,
+  options: {
+    headers?: Record<string, string>;
+    revalidate?: number;
+    timeoutMs?: number;
+  },
 ): Promise<T> {
   const init: CachedInit = {
     headers: { accept: "application/json", ...options.headers },
@@ -34,13 +110,15 @@ export async function getJson<T>(
     response = await fetch(url, init);
   } catch (error) {
     const reason = error instanceof Error ? error.message : "request failed";
-    throw new UpstreamError(service, reason);
+    throw new UpstreamError(service, redactSecrets(reason));
   }
   if (!response.ok) {
+    const detail = await readErrorDetail(response);
     throw new UpstreamError(
       service,
-      `HTTP ${response.status}`,
+      `HTTP ${response.status}${detail ? ` — ${detail}` : ""}`,
       response.status,
+      detail,
     );
   }
   try {
@@ -74,10 +152,12 @@ export async function postJson<T>(
     throw new UpstreamError(service, reason);
   }
   if (!response.ok) {
+    const detail = await readErrorDetail(response);
     throw new UpstreamError(
       service,
-      `HTTP ${response.status}`,
+      `HTTP ${response.status}${detail ? ` — ${detail}` : ""}`,
       response.status,
+      detail,
     );
   }
   try {

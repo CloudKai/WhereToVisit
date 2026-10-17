@@ -207,11 +207,15 @@ export function normalizePlaceFeature(
   };
 }
 
-async function fetchGroup(
-  destination: Destination,
+/** Geoapify's free plan allows 5 requests a second; stay well under it. */
+const CONCURRENT_REQUESTS = 3;
+
+/** The exact address a search asks for, so the status page can test the real thing. */
+export function placesRequestUrl(
+  destination: Pick<Destination, "lat" | "lon" | "radiusM">,
   apiKey: string,
   category: Category,
-): Promise<RawPlace[]> {
+): string {
   const info = CATEGORY_INFO[category];
   const url = new URL(`${BASE}/v2/places`);
   url.search = new URLSearchParams({
@@ -219,12 +223,24 @@ async function fetchGroup(
     filter: `circle:${destination.lon},${destination.lat},${destination.radiusM}`,
     bias: `proximity:${destination.lon},${destination.lat}`,
     limit: String(info.limit),
-    lang: "en",
     apiKey,
   }).toString();
-  const data = await getJson<FeatureCollection>("Geoapify", url.toString(), {
-    revalidate: 86400,
-  });
+  return url.toString();
+}
+
+/** Places of one type around the destination. */
+export async function fetchPlacesForCategory(
+  destination: Destination,
+  apiKey: string,
+  category: Category,
+): Promise<RawPlace[]> {
+  const info = CATEGORY_INFO[category];
+  const data = await getJson<FeatureCollection>(
+    "Geoapify",
+    placesRequestUrl(destination, apiKey, category),
+    // A busy request can be slow, and a rate limit is worth one more try.
+    { revalidate: 86400, timeoutMs: 20000, retries: 1 },
+  );
   const places: RawPlace[] = [];
   for (const feature of data.features ?? []) {
     const place = normalizePlaceFeature(feature, category);
@@ -237,17 +253,27 @@ async function fetchGroup(
 
 /**
  * Places around the destination from OpenStreetMap data, one request per
- * category. A category that fails is skipped (and logged) so one bad request
- * cannot hide everything else; only if all fail does this throw.
+ * category, a few at a time. A category that fails is skipped (and logged with
+ * the service's own explanation) so one bad request cannot hide everything
+ * else; only if all fail does this throw.
  */
 export async function fetchOsmPlaces(
   destination: Destination,
   apiKey: string,
   categories: Category[] = CATEGORIES,
 ): Promise<RawPlace[]> {
-  const settled = await Promise.allSettled(
-    categories.map((category) => fetchGroup(destination, apiKey, category)),
-  );
+  const settled: PromiseSettledResult<RawPlace[]>[] = [];
+  for (let i = 0; i < categories.length; i += CONCURRENT_REQUESTS) {
+    settled.push(
+      ...(await Promise.allSettled(
+        categories
+          .slice(i, i + CONCURRENT_REQUESTS)
+          .map((category) =>
+            fetchPlacesForCategory(destination, apiKey, category),
+          ),
+      )),
+    );
+  }
   const places: RawPlace[] = [];
   let firstFailure: unknown;
   settled.forEach((result, index) => {
