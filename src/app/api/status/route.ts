@@ -243,6 +243,28 @@ export async function GET() {
           "OPENAI_API_KEY is not set — long notes stay as plain text (fine)",
       };
 
+  result.speech = config.openaiKey
+    ? {
+        configured: true,
+        ...(await probe(
+          () =>
+            fetch(
+              `https://api.openai.com/v1/models/${encodeURIComponent(config.openaiTranscribeModel)}`,
+              {
+                signal: timeout(),
+                cache: "no-store",
+                headers: { authorization: `Bearer ${config.openaiKey}` },
+              },
+            ),
+          `speech-to-text model “${config.openaiTranscribeModel}” is available`,
+        )),
+      }
+    : {
+        configured: false,
+        detail:
+          "OPENAI_API_KEY is not set — the sound of a recording will not be used",
+      };
+
   const mode = storageMode(config, process.env.NODE_ENV);
   result.voting = {
     configured: mode === "redis",
