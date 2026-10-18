@@ -30,6 +30,7 @@ import { MediaError, prepareFiles } from "@/lib/media";
 import { listen } from "@/lib/transcribe-client";
 import { MapCanvas, type MapMarker } from "./map";
 import { usePlan } from "./plan-provider";
+import { PLATFORM_TIP, VideoHowTo } from "./video-howto";
 
 type Post = {
   url: string;
@@ -422,11 +423,14 @@ export function LinkImport() {
       <form className="links-form" onSubmit={find} noValidate>
         <p className="hint links-honest">
           <strong>How it works:</strong> add the link to each post — it’s kept
-          as your <em>source</em>. Instagram and Xiaohongshu don’t let other
-          apps read posts, so to find places in them, also paste the caption (or
-          type the place names, one per line). The caption is optional, but
-          without it there is nothing for us to search.
+          as your <em>source</em>. The apps don’t let us open the video from the
+          link, so also give us something to read: upload the video (or
+          screenshots) from your device, or paste the caption or type the place
+          names, one per line. Not sure how to get the video? Open “How do I get
+          the video?” below.
         </p>
+
+        <VideoHowTo />
 
         <fieldset className="form-lock" disabled={busy}>
           {posts.map((post, index) => {
@@ -580,6 +584,9 @@ export function LinkImport() {
                     Reading pictures needs an OpenAI key on this site, so these
                     won’t be used.
                   </p>
+                )}
+                {platform && !hasMedia && (
+                  <p className="hint">{PLATFORM_TIP[platform]}</p>
                 )}
                 {noCaption && (
                   <p className="hint">
