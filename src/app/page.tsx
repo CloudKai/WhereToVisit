@@ -7,10 +7,10 @@ export default function Home() {
     <>
       <section className="hero">
         <p className="eyebrow">
-          Cafés &amp; restaurants · anywhere in the world
+          Food · shopping · sights · parks · anywhere in the world
         </p>
         <h1>
-          Find the tables worth <em>travelling</em> for.
+          Find the places worth <em>travelling</em> for.
         </h1>
         <p className="lead">
           Search a city or neighbourhood. See places that travel editors

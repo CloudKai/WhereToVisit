@@ -39,7 +39,7 @@ test("splitParams ignores pipes inside links and nested templates", () => {
   ]);
 });
 
-test("parseListings reads eat/drink listings and cleans wikitext", () => {
+test("parseListings reads listings of every type and cleans wikitext", () => {
   const listings = parseListings(SAMPLE, "Kyoto/Central");
   const names = listings.map((l) => l.name);
   assert.deepEqual(names, [
@@ -47,6 +47,7 @@ test("parseListings reads eat/drink listings and cleans wikitext", () => {
     "Ramen Ichi",
     "The Rusty Pub",
     "Tea House Matcha",
+    "Temple",
     "Bad Coords",
   ]);
   const cafe = listings[0];

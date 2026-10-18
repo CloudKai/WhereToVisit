@@ -4,16 +4,60 @@ import { useEffect, useId, useRef, useState } from "react";
 import { exploreHref } from "@/lib/destination";
 import type { Suggestion } from "@/lib/types";
 
-type Status = "idle" | "loading" | "ready" | "empty" | "error" | "setup";
+type Status =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "empty"
+  | "rate-limited"
+  | "key-rejected"
+  | "quota"
+  | "unavailable"
+  | "not-configured"
+  | "backup-pick";
+
+const BACKUP_HINT = " Press Enter to try the backup search.";
 
 const STATUS_TEXT: Partial<Record<Status, string>> = {
   loading: "Searching…",
-  empty: "No matching destinations. Try a city or neighbourhood name.",
-  error:
-    "Search is unavailable right now. Pick one of the popular cities below.",
-  setup:
-    "Search needs a Geoapify key in .env.local. Pick a popular city below.",
+  empty: "No matching place found. Try a city name, like “Lisbon” or “Kyoto”.",
+  "rate-limited": "You’re searching very quickly. Wait a moment and try again.",
+  "key-rejected": `The place-search key was rejected — the site owner should check GEOAPIFY_API_KEY.${BACKUP_HINT}`,
+  quota: `Today’s place-search limit has been reached.${BACKUP_HINT}`,
+  unavailable: `Live suggestions are unavailable right now.${BACKUP_HINT}`,
+  "not-configured": `Live suggestions need a Geoapify key in .env.local.${BACKUP_HINT}`,
+  "backup-pick": "Choose the right match:",
 };
+
+type Outcome = { suggestions: Suggestion[]; status: Status };
+
+async function lookup(
+  text: string,
+  submitted: boolean,
+  signal?: AbortSignal,
+): Promise<Outcome> {
+  const params = new URLSearchParams({ q: text });
+  if (submitted) params.set("submit", "1");
+  const response = await fetch(`/api/suggest?${params}`, { signal });
+  let data: { suggestions?: Suggestion[]; error?: string } = {};
+  try {
+    data = await response.json();
+  } catch {
+    // fall through to a generic failure
+  }
+  const suggestions = data.suggestions ?? [];
+  if (response.ok) {
+    return { suggestions, status: suggestions.length > 0 ? "ready" : "empty" };
+  }
+  const known: Status[] = [
+    "rate-limited",
+    "key-rejected",
+    "quota",
+    "not-configured",
+  ];
+  const status = known.find((s) => s === data.error) ?? "unavailable";
+  return { suggestions: [], status };
+}
 
 export function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
   const router = useRouter();
@@ -23,8 +67,10 @@ export function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
   const [active, setActive] = useState(-1);
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
+  const [submitting, setSubmitting] = useState(false);
   const controller = useRef<AbortController | null>(null);
 
+  // Suggestions while typing (debounced).
   useEffect(() => {
     const text = query.trim();
     controller.current?.abort();
@@ -38,25 +84,13 @@ export function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
       controller.current = abort;
       setStatus("loading");
       try {
-        const response = await fetch(
-          `/api/suggest?q=${encodeURIComponent(text)}`,
-          {
-            signal: abort.signal,
-          },
-        );
-        const data = (await response.json()) as {
-          suggestions?: Suggestion[];
-          error?: string;
-        };
-        if (data.error === "not-configured") return setStatus("setup");
-        if (!response.ok) return setStatus("error");
-        const found = data.suggestions ?? [];
-        setItems(found);
+        const outcome = await lookup(text, false, abort.signal);
+        setItems(outcome.suggestions);
         setActive(-1);
-        setOpen(found.length > 0);
-        setStatus(found.length > 0 ? "ready" : "empty");
+        setOpen(outcome.suggestions.length > 0);
+        setStatus(outcome.status);
       } catch (error) {
-        if ((error as Error).name !== "AbortError") setStatus("error");
+        if ((error as Error).name !== "AbortError") setStatus("unavailable");
       }
     }, 250);
     return () => clearTimeout(timer);
@@ -66,6 +100,32 @@ export function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
     setOpen(false);
     setQuery(suggestion.label);
     router.push(exploreHref(suggestion));
+  }
+
+  // Pressing Enter: use what is on screen, or run a full search.
+  async function submitSearch() {
+    const text = query.trim();
+    if (text.length < 2) return;
+    controller.current?.abort();
+    setSubmitting(true);
+    setStatus("loading");
+    try {
+      const outcome = await lookup(text, true);
+      if (outcome.suggestions.length === 1) {
+        choose(outcome.suggestions[0]);
+        return;
+      }
+      setItems(outcome.suggestions);
+      setActive(-1);
+      setOpen(outcome.suggestions.length > 0);
+      setStatus(
+        outcome.suggestions.length > 0 ? "backup-pick" : outcome.status,
+      );
+    } catch {
+      setStatus("unavailable");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -85,8 +145,10 @@ export function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
 
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const pick = items[active >= 0 ? active : 0];
+    const pick = active >= 0 ? items[active] : undefined;
     if (pick) choose(pick);
+    else if (status === "ready" && items[0]) choose(items[0]);
+    else void submitSearch();
   }
 
   const optionId = (index: number) => `${listId}-option-${index}`;
@@ -127,7 +189,7 @@ export function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? optionId(active) : undefined}
-          placeholder="Where are you going? Try Kyoto, Lisbon, Shibuya…"
+          placeholder="Any city or neighbourhood: Shanghai, Kyoto, Shibuya…"
           value={query}
           maxLength={80}
           onChange={(event) => setQuery(event.target.value)}
@@ -137,8 +199,12 @@ export function SearchBox({ autoFocus = false }: { autoFocus?: boolean }) {
           // biome-ignore lint/a11y/noAutofocus: the home page's single purpose is this field
           autoFocus={autoFocus}
         />
-        <button type="submit" className="button" disabled={items.length === 0}>
-          Find places
+        <button
+          type="submit"
+          className="button"
+          disabled={query.trim().length < 2 || submitting}
+        >
+          {submitting ? "Searching…" : "Find places"}
         </button>
       </div>
       <ul id={listId} role="listbox" className="suggestions" hidden={!open}>

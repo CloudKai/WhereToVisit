@@ -1,4 +1,4 @@
-import { haversineKm, isLat, isLon } from "./geo.ts";
+import { haversineKm, inBounds, isLat, isLon } from "./geo.ts";
 import { getJson } from "./http.ts";
 import {
   cleanWikitext,
@@ -8,8 +8,11 @@ import {
 } from "./text.ts";
 import type { Category, Destination, RawPlace } from "./types.ts";
 
+export type ListingType = "eat" | "drink" | "see" | "do" | "buy";
+const LISTING_TYPES: ListingType[] = ["eat", "drink", "see", "do", "buy"];
+
 export type WikivoyageListing = {
-  type: "eat" | "drink";
+  type: ListingType;
   name: string;
   alt?: string;
   address?: string;
@@ -99,7 +102,12 @@ export function parseListings(
   for (const body of extractTemplates(wikitext)) {
     const [head, ...rest] = splitParams(body);
     const templateName = head.trim().toLowerCase();
-    if (!["eat", "drink", "listing"].includes(templateName)) continue;
+    if (
+      templateName !== "listing" &&
+      !LISTING_TYPES.includes(templateName as ListingType)
+    ) {
+      continue;
+    }
 
     const params: Record<string, string> = {};
     for (const part of rest) {
@@ -114,14 +122,14 @@ export function parseListings(
       templateName === "listing"
         ? params.type?.trim().toLowerCase()
         : templateName;
-    if (type !== "eat" && type !== "drink") continue;
+    if (!LISTING_TYPES.includes(type as ListingType)) continue;
 
     const name = cleanWikitext(params.name);
     if (!name) continue;
 
     const wikidata = params.wikidata?.trim();
     listings.push({
-      type,
+      type: type as ListingType,
       name,
       alt: cleanWikitext(params.alt) || undefined,
       address: cleanWikitext(params.address) || undefined,
@@ -144,17 +152,29 @@ const CAFE_WORDS =
   /\b(caf[eé]s?|coffee|espresso|roaster(?:y|s)?|tea\s?house|tea\s?room|teahouse|bakery|patisserie|pâtisserie|boulangerie|brunch)\b/i;
 const NOT_FOOD_WORDS =
   /\b(night\s?club|nightclub|pub|brewery|cocktail|wine bar|beer|sake bar|karaoke|lounge|disco|dive bar|speakeasy)\b/i;
+const PARK_WORDS =
+  /\b(parks?|gardens?|botanical|nature reserve|national park|forest|beach|lake|waterfall|hill|mount(?:ain)?|island|promenade)\b/i;
+const MUSEUM_WORDS =
+  /\b(museums?|galler(?:y|ies)|exhibition|art cent(?:re|er)|theat(?:re|er)|opera|concert hall|planetarium|aquarium)\b/i;
 
 /**
- * Wikivoyage "drink" listings are mostly bars. Keep only cafés/tea rooms from
- * them, since this app is about food and cafés.
+ * Chooses our category for a Wikivoyage listing, or null to skip it.
+ * "Drink" listings are mostly bars, so only cafés and tea rooms are kept.
+ * Park and museum are decided from the name only, because descriptions
+ * mention nearby parks and museums all the time.
  */
 export function listingCategory(listing: WikivoyageListing): Category | null {
+  if (listing.type === "buy") return "shopping";
+  if (listing.type === "see" || listing.type === "do") {
+    if (MUSEUM_WORDS.test(listing.name)) return "museum";
+    if (PARK_WORDS.test(listing.name)) return "park";
+    return "attraction";
+  }
   const text = `${listing.name} ${listing.description ?? ""}`;
-  if (CAFE_WORDS.test(text) && !NOT_FOOD_WORDS.test(listing.name))
+  if (CAFE_WORDS.test(text) && !NOT_FOOD_WORDS.test(listing.name)) {
     return "cafe";
-  if (listing.type === "drink") return null;
-  return "food";
+  }
+  return listing.type === "drink" ? null : "food";
 }
 
 export function pageUrl(title: string): string {
@@ -244,7 +264,8 @@ export async function fetchWikivoyagePlaces(
   });
   const titles = (found.query?.geosearch ?? [])
     .filter((entry) => entry.ns === 0)
-    .slice(0, 6)
+    // Big cities keep their listings in district articles (e.g. "Tokyo/Shibuya").
+    .slice(0, 10)
     .map((entry) => entry.title);
   if (titles.length === 0) return [];
 
@@ -262,7 +283,7 @@ export async function fetchWikivoyagePlaces(
   const pages = await getJson<PagesResponse>("Wikivoyage", content.toString(), {
     headers,
     revalidate: 86400,
-    timeoutMs: 15000,
+    timeoutMs: 20000,
   });
 
   const maxKm = (radius / 1000) * 1.5;
@@ -271,10 +292,22 @@ export async function fetchWikivoyagePlaces(
     const text = page.revisions?.[0]?.slots?.main?.content;
     if (page.missing || !text) continue;
     for (const listing of parseListings(text, page.title)) {
-      if (listing.lat !== undefined && listing.lon !== undefined) {
+      const located = listing.lat !== undefined && listing.lon !== undefined;
+      if (destination.bounds) {
+        // A searched map area needs a position to prove a place is inside it.
+        if (!located) continue;
+        if (
+          !inBounds(
+            { lat: listing.lat as number, lon: listing.lon as number },
+            destination.bounds,
+          )
+        ) {
+          continue;
+        }
+      } else if (located) {
         const km = haversineKm(destination, {
-          lat: listing.lat,
-          lon: listing.lon,
+          lat: listing.lat as number,
+          lon: listing.lon as number,
         });
         if (km > maxKm) continue;
       }
