@@ -10,6 +10,9 @@ import { clientId, fail, handleError, json, readJson } from "@/lib/room-http";
 import { allow } from "@/lib/rooms";
 import { getStore } from "@/lib/store";
 
+/** Reading pictures and audio can take a while; the host default is too short. */
+export const maxDuration = 60;
+
 // Used only when no shared store is configured (local development).
 const localHour = new WindowCounter(3600_000);
 const localMinute = new WindowCounter(60_000);
